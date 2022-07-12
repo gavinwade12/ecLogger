@@ -75,18 +75,22 @@ func newPacket(src, dest byte, cmd byte, data []byte) Packet {
 		copy(packet[PacketIndexPayloadStart:len(packet)-1], data)
 	}
 
-	checksum := 0
-	for _, b := range packet {
-		checksum += int(b)
-	}
-	packet[len(packet)-1] = byte(checksum)
+	packet[len(packet)-1] = calculateChecksum(packet)
 
 	return packet
 }
 
+func calculateChecksum(p Packet) byte {
+	checksum := 0
+	for _, b := range p[:len(p)-1] {
+		checksum += int(b)
+	}
+	return byte(checksum)
+}
+
 func validateHeader(b []byte) error {
 	if len(b) != PacketHeaderSize {
-		return errors.New(fmt.Sprintf("invalid header size: %d", len(b)))
+		return fmt.Errorf("invalid header size: %d", len(b))
 	}
 	if b[PacketIndexMagicByte] != PacketMagicByte {
 		return errors.New("invalid magic byte")

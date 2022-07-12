@@ -24,6 +24,8 @@ func init() {
 	readFromPortCmd.Flags().IntVar(&byteCount, "byteCount", 0, "The amount of bytes to read from the port")
 	portsCmd.AddCommand(readFromPortCmd)
 
+	portsCmd.AddCommand(readPacketFromPortCmd)
+
 	rootCmd.AddCommand(portsCmd)
 }
 
@@ -118,7 +120,7 @@ var writeToPortCmd = &cobra.Command{
 		if port == "" {
 			return errors.New("a port is required for sending")
 		}
-		conn, err := ssm2.NewConnection(port)
+		conn, err := ssm2.NewConnection(port, ssm2Logger(cmd))
 		if err != nil {
 			return errors.Wrap(err, "creating new ssm2 connection")
 		}
@@ -156,7 +158,7 @@ var readFromPortCmd = &cobra.Command{
 		if port == "" {
 			return errors.New("a port is required for reading")
 		}
-		conn, err := ssm2.NewConnection(port)
+		conn, err := ssm2.NewConnection(port, ssm2Logger(cmd))
 		if err != nil {
 			return errors.Wrap(err, "creating new ssm2 connection")
 		}
@@ -174,6 +176,37 @@ var readFromPortCmd = &cobra.Command{
 		}
 		fmt.Println()
 
+		return nil
+	},
+}
+
+var readPacketFromPortCmd = &cobra.Command{
+	Use:   "read_packet",
+	Short: "Read an entire packet from the selected port",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if port == "" {
+			return errors.New("a port is required for reading")
+		}
+		conn, err := ssm2.NewConnection(port, ssm2Logger(cmd))
+		if err != nil {
+			return errors.Wrap(err, "creating new ssm2 connection")
+		}
+
+		packet, err := conn.NextPacket(cmd.Context())
+		if err != nil {
+			conn.Close()
+			return errors.Wrap(err, "reading packet")
+		}
+
+		fmt.Print("read bytes: ")
+		for _, b := range packet {
+			fmt.Printf("0x%x ", b)
+		}
+		fmt.Println()
+
+		if err = conn.Close(); err != nil {
+			return errors.Wrap(err, "closing ssm2 connection")
+		}
 		return nil
 	},
 }

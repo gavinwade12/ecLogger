@@ -28,7 +28,7 @@ var logCmd = &cobra.Command{
 			return errors.New("the port setting is required for logging")
 		}
 
-		conn, err := ssm2.NewConnection(port)
+		conn, err := ssm2.NewConnection(port, ssm2Logger(cmd))
 		if err != nil {
 			return errors.Wrap(err, "creating new connection")
 		}

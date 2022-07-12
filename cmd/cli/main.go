@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/gavinwade12/ssm2"
 	"github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -17,6 +18,7 @@ const portSettingName string = "port"
 var configFile string
 var parameterFile string
 var port string
+var quiet bool
 
 func init() {
 	cobra.OnInitialize(func() {
@@ -27,6 +29,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "config file (default is $HOME/.ssm2.yaml)")
 	rootCmd.PersistentFlags().StringVar(&parameterFile, "parameters", "", "parameter file (default is $HOME/.ssm.parameters.json)")
 	rootCmd.PersistentFlags().StringVar(&port, portSettingName, "", "The serial port to connect to. Example: /dev/ttyUSB0")
+	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Quiet log output")
 }
 
 func main() {
@@ -97,4 +100,11 @@ func presetRequiredFlags(cmd *cobra.Command) {
 			cmd.Flags().Set(f.Name, viper.GetString(f.Name))
 		}
 	})
+}
+
+func ssm2Logger(cmd *cobra.Command) ssm2.Logger {
+	if quiet {
+		return ssm2.NopLogger
+	}
+	return ssm2.DefaultLogger(cmd.OutOrStdout())
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"time"
 
@@ -43,6 +44,8 @@ func AvailablePorts() ([]SerialPort, error) {
 type Connection struct {
 	portName   string
 	serialPort io.ReadWriteCloser
+
+	logger Logger
 }
 
 const (
@@ -59,8 +62,11 @@ const (
 )
 
 // NewConnection returns a new Connection with the serial port already initialized.
-func NewConnection(portName string) (*Connection, error) {
-	c := &Connection{portName: portName}
+func NewConnection(portName string, l Logger) (*Connection, error) {
+	if l == nil {
+		l = NopLogger
+	}
+	c := &Connection{portName: portName, logger: l}
 	err := c.Initialize()
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing serial port")
@@ -200,11 +206,7 @@ func (c *Connection) SendReadAddressesRequest(ctx context.Context, addresses [][
 }
 
 func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
-	fmt.Print("sending packet: ")
-	for _, b := range p {
-		fmt.Printf("0x%x ", b)
-	}
-	fmt.Println()
+	logBytes(c.logger, p, "sending packet: ")
 
 	wb, err := c.serialPort.Write(p)
 	if err != nil {
@@ -216,7 +218,7 @@ func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 	}
 
 	// wait for the written bytes to transfer
-	waitForNBytesToTransfer(len(p))
+	c.waitForNBytesToTransfer(len(p))
 
 	sentCommand := p[PacketIndexCommand]
 	currentCommand := sentCommand
@@ -227,8 +229,8 @@ func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 		}
 		currentCommand = resp[PacketIndexCommand]
 		if currentCommand == sentCommand {
-			fmt.Println("read back same command")
-			fmt.Printf("packets are equal: %v\n", string(resp) == string(p))
+			c.logger.Debug("read back same command")
+			c.logger.Debugf("packets are equal: %v\n", string(resp) == string(p))
 		}
 	}
 
@@ -237,10 +239,10 @@ func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 
 // NextPacket reads the next packet from the ECU.
 func (c *Connection) NextPacket(ctx context.Context) (Packet, error) {
-	fmt.Println("reading next packet")
+	c.logger.Debug("reading next packet")
 
 	header := make([]byte, PacketHeaderSize)
-	fmt.Printf("reading %d header bytes\n", PacketHeaderSize)
+	c.logger.Debugf("reading %d header bytes\n", PacketHeaderSize)
 	err := c.readInFull(ctx, header)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading packet header")
@@ -250,13 +252,17 @@ func (c *Connection) NextPacket(ctx context.Context) (Packet, error) {
 	}
 
 	payload := make([]byte, int(header[PacketIndexPayloadSize]))
-	fmt.Printf("reading %d payload bytes\n", len(payload))
+	c.logger.Debugf("reading %d payload bytes\n", len(payload))
 	err = c.readInFull(ctx, payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading packet payload")
 	}
 
-	return Packet(append(header, payload...)), nil
+	packet := Packet(append(header, payload...))
+	if calculateChecksum(packet) != packet[len(packet)-1] {
+		return nil, errors.New("invalid checksum byte")
+	}
+	return packet, nil
 }
 
 type readResult struct {
@@ -272,8 +278,8 @@ func (c *Connection) readInFull(ctx context.Context, b []byte) error {
 	go func(ctx context.Context, result chan<- readResult, b []byte) {
 		readCount := 0
 		for readCount < len(b) {
-			waitForNBytesToTransfer(len(b) - readCount)
-			fmt.Println("starting read")
+			c.waitForNBytesToTransfer(len(b) - readCount)
+			c.logger.Debug("starting read")
 
 			// start a goroutine to call read on the port
 			result := make(chan readResult, 1)
@@ -291,11 +297,7 @@ func (c *Connection) readInFull(ctx context.Context, b []byte) error {
 				return
 			case r := <-result:
 				if r.count > 0 {
-					fmt.Print("read: ")
-					for _, bb := range b[readCount : readCount+r.count] {
-						fmt.Printf("0x%x ", bb)
-					}
-					fmt.Println()
+					logBytes(c.logger, b[readCount:readCount+r.count], "read: ")
 				}
 				readCount += r.count
 
@@ -317,9 +319,9 @@ func (c *Connection) readInFull(ctx context.Context, b []byte) error {
 	}
 }
 
-func waitForNBytesToTransfer(n int) {
+func (c *Connection) waitForNBytesToTransfer(n int) {
 	ms := microsecondsOnTheWire(n)
-	fmt.Printf("waiting %s for %d bytes\n", ms, n)
+	c.logger.Debugf("waiting %s for %d bytes\n", ms, n)
 	<-time.NewTimer(ms).C
 }
 
@@ -334,4 +336,41 @@ func microsecondsOnTheWire(byteCount int) time.Duration {
 	return time.Duration(int(math.Round(
 		float64(byteCount*10000000)/float64(ConnectionBaudRate),
 	))) * time.Microsecond
+}
+
+type Logger interface {
+	Debug(message string)
+	Debugf(message string, args ...interface{})
+}
+
+type nopLogger struct{}
+
+func (l nopLogger) Debug(message string) {}
+
+func (l nopLogger) Debugf(message string, args ...interface{}) {}
+
+var NopLogger Logger = nopLogger{}
+
+type defaultLogger struct {
+	l *log.Logger
+}
+
+func (l *defaultLogger) Debug(message string) {
+	l.l.Println(message)
+}
+
+func (l *defaultLogger) Debugf(message string, args ...interface{}) {
+	l.l.Printf(message, args...)
+}
+
+var DefaultLogger = func(out io.Writer) Logger {
+	return &defaultLogger{log.New(out, "SSM2 ", log.LstdFlags)}
+}
+
+func logBytes(l Logger, b []byte, prefix string) {
+	s := prefix
+	for _, bb := range b {
+		s += fmt.Sprintf("0x%x ", bb)
+	}
+	l.Debug(s + "\n")
 }
