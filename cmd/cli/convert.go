@@ -123,14 +123,14 @@ func (d romRaiderDTC) GetTmpAddressBytes() ([]byte, error) {
 	if len(d.TmpAddr) > 2 {
 		return hex.DecodeString(d.TmpAddr[2:])
 	}
-	return []byte{}, fmt.Errorf("Dtc Temp Address malformed %s", d.TmpAddr)
+	return []byte{}, fmt.Errorf("dtc tmp address malformed %s", d.TmpAddr)
 }
 
 func (d romRaiderDTC) GetMemAddressBytes() ([]byte, error) {
 	if len(d.MemAddr) > 2 {
 		return hex.DecodeString(d.MemAddr[2:])
 	}
-	return []byte{}, fmt.Errorf("Dtc Address malformed %s", d.MemAddr)
+	return []byte{}, fmt.Errorf("dtc address malformed %s", d.MemAddr)
 }
 
 // TODO: Some of these have dependencies on other params, and are actually
@@ -163,7 +163,7 @@ func (a romRaiderParameterAddress) GetAddressBytes() ([3]byte, error) {
 			return [3]byte{b[0], b[1], b[2]}, nil
 		}
 	}
-	return [3]byte{}, fmt.Errorf("Parameter Address malformed '%s'", a.Address)
+	return [3]byte{}, fmt.Errorf("parameter address malformed '%s'", a.Address)
 }
 
 type romRaiderParameterConversion struct {

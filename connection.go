@@ -98,6 +98,10 @@ func (c *Connection) Initialize() error {
 	return nil
 }
 
+func (c *Connection) SerialPort() io.ReadWriter {
+	return c.serialPort
+}
+
 // Close releases any resouces held by the connection e.g. the connection over the serial port.
 func (c *Connection) Close() error {
 	if c.serialPort == nil {
