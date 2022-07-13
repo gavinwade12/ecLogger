@@ -43,7 +43,7 @@ func AvailablePorts() ([]SerialPort, error) {
 // an ECU.
 type Connection struct {
 	portName   string
-	serialPort io.ReadWriteCloser
+	serialPort serial.Port
 
 	logger Logger
 }
@@ -55,10 +55,10 @@ const (
 	ConnectionDataBits int = 8
 	// ConnectionReadTimeout is the amount of time per read spent before a timeout occurs.
 	// The timeout is per read, but it may take several reads to consume an entire packet.
-	ConnectionReadTimeout time.Duration = time.Minute * 500
+	ConnectionReadTimeout time.Duration = time.Millisecond * 500
 	// ConnectionTotalReadTimeout is the amount of time spent to read an entire buffer before
 	// a timeout occurs. This applies to the full-length read and not individual reads.
-	ConnectionTotalReadTimeout time.Duration = time.Minute * 1500
+	ConnectionTotalReadTimeout time.Duration = time.Millisecond * 1500
 )
 
 // NewConnection returns a new Connection with the serial port already initialized.
@@ -212,7 +212,6 @@ func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "writing packet bytes")
 	}
-
 	if wb != len(p) {
 		return nil, errors.Wrapf(err, "only wrote %d bytes (packet had %d bytes)", wb, len(p))
 	}
@@ -372,5 +371,5 @@ func logBytes(l Logger, b []byte, prefix string) {
 	for _, bb := range b {
 		s += fmt.Sprintf("0x%x ", bb)
 	}
-	l.Debug(s + "\n")
+	l.Debug(s)
 }
