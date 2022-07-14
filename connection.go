@@ -15,9 +15,11 @@ import (
 
 // SerialPort describes a serial port on the host.
 type SerialPort struct {
-	PortName    string
-	Description string
-	IsUSB       bool
+	PortName  string
+	Product   string
+	IsUSB     bool
+	VendorID  string
+	ProductID string
 }
 
 // AvailablePorts returns all available serial ports on the current host.
@@ -30,9 +32,11 @@ func AvailablePorts() ([]SerialPort, error) {
 	ports := make([]SerialPort, len(list))
 	for i, p := range list {
 		ports[i] = SerialPort{
-			PortName:    p.Name,
-			Description: p.Product,
-			IsUSB:       p.IsUSB,
+			PortName:  p.Name,
+			Product:   p.Product,
+			IsUSB:     p.IsUSB,
+			VendorID:  p.VID,
+			ProductID: p.PID,
 		}
 	}
 
@@ -43,7 +47,7 @@ func AvailablePorts() ([]SerialPort, error) {
 // an ECU.
 type Connection struct {
 	portName   string
-	serialPort serial.Port
+	serialPort io.ReadWriteCloser
 
 	logger Logger
 }
@@ -55,10 +59,10 @@ const (
 	ConnectionDataBits int = 8
 	// ConnectionReadTimeout is the amount of time per read spent before a timeout occurs.
 	// The timeout is per read, but it may take several reads to consume an entire packet.
-	ConnectionReadTimeout time.Duration = time.Millisecond * 500
+	ConnectionReadTimeout time.Duration = time.Millisecond * 1500
 	// ConnectionTotalReadTimeout is the amount of time spent to read an entire buffer before
 	// a timeout occurs. This applies to the full-length read and not individual reads.
-	ConnectionTotalReadTimeout time.Duration = time.Millisecond * 1500
+	ConnectionTotalReadTimeout time.Duration = time.Millisecond * 5000
 )
 
 // NewConnection returns a new Connection with the serial port already initialized.
@@ -79,12 +83,14 @@ func NewConnection(portName string, l Logger) (*Connection, error) {
 // it will be closed before it's re-opened and configured.
 func (c *Connection) Initialize() error {
 	if c.serialPort != nil {
+		c.logger.Debugf("closing serial connection to %s\n", c.portName)
 		if err := c.serialPort.Close(); err != nil {
 			return errors.Wrap(err, "closing existing serial port during initialization")
 		}
 		c.serialPort = nil
 	}
 
+	c.logger.Debugf("opening serial connection to %s\n", c.portName)
 	sp, err := serial.Open(c.portName, &serial.Mode{
 		BaudRate: ConnectionBaudRate,
 		DataBits: ConnectionDataBits,
@@ -95,9 +101,9 @@ func (c *Connection) Initialize() error {
 		return errors.Wrapf(err, "opening serial port '%s'", c.portName)
 	}
 
-	// this only applies once at least one byte is read, so our
-	// manual timeout applied during reading will take affect most/all the time
-	sp.SetReadTimeout(ConnectionReadTimeout)
+	if err = sp.SetReadTimeout(ConnectionReadTimeout); err != nil {
+		return errors.Wrap(err, "setting connection read timeout")
+	}
 
 	c.serialPort = sp
 
@@ -114,6 +120,7 @@ func (c *Connection) Close() error {
 		return nil
 	}
 
+	c.logger.Debugf("opening serial connection to %s\n", c.portName)
 	err := c.serialPort.Close()
 	if err != nil {
 		return errors.Wrap(err, "closing serial port")
@@ -216,20 +223,16 @@ func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 		return nil, errors.Wrapf(err, "only wrote %d bytes (packet had %d bytes)", wb, len(p))
 	}
 
-	// wait for the written bytes to transfer
-	c.waitForNBytesToTransfer(len(p))
-
 	sentCommand := p[PacketIndexCommand]
 	currentCommand := sentCommand
 	for currentCommand == sentCommand { // make sure we aren't reading back the packet we just sent
-		resp, err := c.NextPacket(ctx)
+		p, err = c.NextPacket(ctx)
 		if err != nil {
 			return nil, errors.Wrap(err, "reading second response packet")
 		}
-		currentCommand = resp[PacketIndexCommand]
+		currentCommand = p[PacketIndexCommand]
 		if currentCommand == sentCommand {
 			c.logger.Debug("read back same command")
-			c.logger.Debugf("packets are equal: %v\n", string(resp) == string(p))
 		}
 	}
 
@@ -277,35 +280,24 @@ func (c *Connection) readInFull(ctx context.Context, b []byte) error {
 	go func(ctx context.Context, result chan<- readResult, b []byte) {
 		readCount := 0
 		for readCount < len(b) {
-			c.waitForNBytesToTransfer(len(b) - readCount)
+			if err := c.waitForNBytesToTransfer(ctx, len(b)-readCount); err != nil {
+				result <- readResult{readCount, err}
+			}
+
 			c.logger.Debug("starting read")
+			count, err := c.serialPort.Read(b[readCount:])
 
-			// start a goroutine to call read on the port
-			result := make(chan readResult, 1)
-			go func(r chan<- readResult, b []byte) {
-				count, err := c.serialPort.Read(b)
-				r <- readResult{count, err}
-			}(result, b[readCount:])
+			if count > 0 {
+				logBytes(c.logger, b[readCount:readCount+count], "read: ")
+			}
+			readCount += count
 
-			select {
-			case <-ctx.Done():
-				result <- readResult{readCount, ctx.Err()}
+			if err != nil {
+				result <- readResult{readCount, err}
 				return
-			case <-time.NewTimer(ConnectionReadTimeout).C:
-				result <- readResult{readCount, ErrorReadTimeout}
-				return
-			case r := <-result:
-				if r.count > 0 {
-					logBytes(c.logger, b[readCount:readCount+r.count], "read: ")
-				}
-				readCount += r.count
-
-				if r.err != nil {
-					result <- readResult{readCount, r.err}
-					return
-				}
 			}
 		}
+		result <- readResult{readCount, nil}
 	}(ctx, result, b)
 
 	select {
@@ -318,10 +310,15 @@ func (c *Connection) readInFull(ctx context.Context, b []byte) error {
 	}
 }
 
-func (c *Connection) waitForNBytesToTransfer(n int) {
+func (c *Connection) waitForNBytesToTransfer(ctx context.Context, n int) error {
 	ms := microsecondsOnTheWire(n)
 	c.logger.Debugf("waiting %s for %d bytes\n", ms, n)
-	<-time.NewTimer(ms).C
+	select {
+	case <-time.NewTimer(ms).C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // baud rate = bits per second

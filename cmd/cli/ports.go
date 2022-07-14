@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gavinwade12/ssm2"
 	"github.com/pkg/errors"
@@ -17,14 +19,15 @@ import (
 func init() {
 	portsCmd.AddCommand(listPortsCmd)
 	portsCmd.AddCommand(selectPortCmd)
+	portsCmd.PersistentFlags().IntVar(&byteCount, "byteCount", 0, "The amount of bytes to read from the port")
+	portsCmd.PersistentFlags().BoolVar(&readPacket, "readPacket", false, "Read an entire packet instead of the specified byte count")
 
 	writeToPortCmd.Flags().StringVar(&bytes, "bytes", "", "The bytes to send over the port")
+	writeToPortCmd.Flags().BoolVar(&readBytes, "readBytes", false, "Read a byteCount after writing the bytes")
+	writeToPortCmd.Flags().IntVar(&pauseMS, "pauseMS", 0, "The number of seconds to pause after writing before reading")
 	portsCmd.AddCommand(writeToPortCmd)
 
-	readFromPortCmd.Flags().IntVar(&byteCount, "byteCount", 0, "The amount of bytes to read from the port")
 	portsCmd.AddCommand(readFromPortCmd)
-
-	portsCmd.AddCommand(readPacketFromPortCmd)
 
 	rootCmd.AddCommand(portsCmd)
 }
@@ -50,8 +53,8 @@ var listPortsCmd = &cobra.Command{
 
 func listPorts(w io.Writer, ports []ssm2.SerialPort) {
 	for i, p := range ports {
-		fmt.Fprintf(w, "[%d]:\tPortName: '%s'\n\tDescription: `%s`\n\tUSB: %v\n\tSelected: %v\n",
-			i, p.PortName, p.Description, p.IsUSB, p.PortName == port)
+		fmt.Fprintf(w, "[%d]:\tPortName: '%s'\n\tProduct: %s\n\tVID/PID: %s/%s\n\tUSB: %v\n\tSelected: %v\n",
+			i, p.PortName, p.Product, p.VendorID, p.ProductID, p.IsUSB, p.PortName == port)
 	}
 }
 
@@ -96,6 +99,8 @@ var selectPortCmd = &cobra.Command{
 }
 
 var bytes string
+var readBytes bool
+var pauseMS int
 
 var writeToPortCmd = &cobra.Command{
 	Use:   "write",
@@ -126,7 +131,8 @@ var writeToPortCmd = &cobra.Command{
 		}
 		defer conn.Close()
 
-		n, err := conn.SerialPort().Write(b)
+		sp := conn.SerialPort()
+		n, err := sp.Write(b)
 		if err != nil {
 			conn.Close()
 			return errors.Wrap(err, "writing to serial port")
@@ -134,6 +140,18 @@ var writeToPortCmd = &cobra.Command{
 		if n != len(b) {
 			conn.Close()
 			return errors.New(fmt.Sprintf("wrote %d bytes but expected to write %d bytes", n, len(b)))
+		}
+
+		if pauseMS > 0 {
+			dur := time.Millisecond * time.Duration(pauseMS)
+			fmt.Printf("pausing for %s\n", dur)
+			<-time.NewTimer(dur).C
+		}
+
+		if readBytes {
+			if err = readBytesFromConn(cmd.Context(), conn); err != nil {
+				return errors.Wrap(err, "reading bytes")
+			}
 		}
 
 		if err = conn.Close(); err != nil {
@@ -145,16 +163,13 @@ var writeToPortCmd = &cobra.Command{
 }
 
 var byteCount int
+var readPacket bool
 
 var readFromPortCmd = &cobra.Command{
 	Use:          "read",
 	Short:        "Read bytes from the selected port",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if byteCount < 1 {
-			return errors.New("byte count must be at least 1")
-		}
-
 		if port == "" {
 			return errors.New("a port is required for reading")
 		}
@@ -163,11 +178,15 @@ var readFromPortCmd = &cobra.Command{
 			return errors.Wrap(err, "creating new ssm2 connection")
 		}
 
-		b := make([]byte, byteCount)
-		_, err = conn.SerialPort().Read(b)
+		return readBytesFromConn(cmd.Context(), conn)
+	},
+}
+
+func readBytesFromConn(ctx context.Context, conn *ssm2.Connection) error {
+	if readPacket {
+		b, err := conn.NextPacket(ctx)
 		if err != nil {
-			conn.Close()
-			return errors.Wrap(err, "reading from serial port")
+			return errors.Wrap(err, "reading packet")
 		}
 
 		fmt.Print("read bytes: ")
@@ -175,38 +194,36 @@ var readFromPortCmd = &cobra.Command{
 			fmt.Printf("0x%x ", bb)
 		}
 		fmt.Println()
-
 		return nil
-	},
-}
+	}
 
-var readPacketFromPortCmd = &cobra.Command{
-	Use:   "read_packet",
-	Short: "Read an entire packet from the selected port",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if port == "" {
-			return errors.New("a port is required for reading")
-		}
-		conn, err := ssm2.NewConnection(port, ssm2Logger(cmd))
+	if byteCount < 1 {
+		return errors.New("byteCount must be > 0")
+	}
+
+	var (
+		b = make([]byte, byteCount)
+		c int
+	)
+	for c < byteCount {
+		cc, err := conn.SerialPort().Read(b[c:])
 		if err != nil {
-			return errors.Wrap(err, "creating new ssm2 connection")
+			return errors.Wrap(err, "reading chunk")
 		}
 
-		packet, err := conn.NextPacket(cmd.Context())
-		if err != nil {
-			conn.Close()
-			return errors.Wrap(err, "reading packet")
-		}
-
-		fmt.Print("read bytes: ")
-		for _, b := range packet {
-			fmt.Printf("0x%x ", b)
+		fmt.Print("read byte chunk: ")
+		for _, bb := range b[c : c+cc] {
+			fmt.Printf("0x%x ", bb)
 		}
 		fmt.Println()
+		c += cc
+	}
 
-		if err = conn.Close(); err != nil {
-			return errors.Wrap(err, "closing ssm2 connection")
-		}
-		return nil
-	},
+	fmt.Print("read bytes: ")
+	for _, bb := range b {
+		fmt.Printf("0x%x ", bb)
+	}
+	fmt.Println()
+
+	return nil
 }
