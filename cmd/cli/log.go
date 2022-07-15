@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gavinwade12/ssm2"
+	"github.com/gavinwade12/ssm2/protocols/ssm2"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
