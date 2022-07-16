@@ -31,6 +31,35 @@ const (
 	PacketHeaderSize int = 5
 )
 
+const (
+	DeviceEngine                 byte = 0x10
+	DeviceTransmission           byte = 0x18
+	DeviceDiagnosticTool         byte = 0xf0
+	DeviceFastModeDiagnosticTool byte = 0xf2
+
+	CommandReadBlockRequest      byte = 0xa0
+	CommandReadBlockResponse     byte = 0xe0
+	CommandReadAddressesRequest  byte = 0xa8
+	CommandReadAddressesResponse byte = 0xe8
+	CommandWriteBlockRequest     byte = 0xb0
+	CommandWriteBlockResponse    byte = 0xf0
+	CommandWriteAddressRequest   byte = 0xb8
+	CommandWriteAddressResponse  byte = 0xf8
+	CommandInitRequest           byte = 0xbf
+	CommandInitResponse          byte = 0xff
+)
+
+var (
+	// ErrInvalidResponseCommand is returned when a packet is sent and
+	// the ECU doesn't respond with the proper command corresponding to the
+	// sent command.
+	ErrInvalidResponseCommand = errors.New("invalid response command")
+
+	// ErrInvalidChecksumByte is returned when a packet is received from
+	// the ECU and the checksum byte doesn't match the calculated checksum byte.
+	ErrInvalidChecksumByte = errors.New("invalid checksum byte")
+)
+
 func (p Packet) Data() []byte {
 	return p[PacketIndexPayloadStart : len(p)-1]
 }
@@ -92,4 +121,37 @@ func validateHeader(b []byte) error {
 		return errors.New("invalid payload size")
 	}
 	return nil
+}
+
+type ECU struct {
+	SSM_ID []byte
+	ROM_ID []byte
+
+	SupportedParameters        map[string]*Parameter
+	SupportedDerivedParameters map[string]*DerivedParameter
+}
+
+func parseECUFromInitResponse(p Packet) *ECU {
+	data := p.Data()
+	dLen := uint(len(data))
+
+	ecu := &ECU{
+		SSM_ID:              data[:3],
+		ROM_ID:              data[3:8],
+		SupportedParameters: make(map[string]*Parameter),
+	}
+
+	for _, p := range Parameters {
+		if p.CapabilityByteIndex >= dLen {
+			continue // capability byte isn't in the data
+		}
+
+		if (data[p.CapabilityByteIndex] & (1 << p.CapabilityBitIndex)) != 0 {
+			ecu.SupportedParameters[p.Id] = &p
+		}
+	}
+
+	ecu.SupportedDerivedParameters = AvailableDerivedParameters(ecu.SupportedParameters)
+
+	return ecu
 }

@@ -60,7 +60,7 @@ func TestSendingPacket(t *testing.T) {
 		resp = append(resp, calculateChecksum(resp))
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
 		if err == nil {
@@ -78,7 +78,7 @@ func TestSendingPacket(t *testing.T) {
 		resp = append(resp, calculateChecksum(resp))
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
 		if err == nil {
@@ -96,7 +96,7 @@ func TestSendingPacket(t *testing.T) {
 		resp = append(resp, calculateChecksum(resp))
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
 		if err == nil {
@@ -114,7 +114,7 @@ func TestSendingPacket(t *testing.T) {
 		resp = append(resp, calculateChecksum(resp))
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
 		if err == nil {
@@ -132,7 +132,7 @@ func TestSendingPacket(t *testing.T) {
 		resp = append(resp, calculateChecksum(resp)+1)
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
 		if !errors.Is(err, ssm2.ErrInvalidChecksumByte) {
@@ -151,7 +151,7 @@ func TestSendingPacket(t *testing.T) {
 		resp = append(initRequestPacket, resp...)
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
 		if err != nil {
@@ -177,7 +177,7 @@ func TestInitECU(t *testing.T) {
 		resp = append(resp, calculateChecksum(resp))
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
 		if err != nil {
@@ -200,7 +200,7 @@ func TestInitECU(t *testing.T) {
 		resp = append(resp, calculateChecksum(resp))
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
 		if !errors.Is(err, ssm2.ErrInvalidResponseCommand) {
@@ -224,7 +224,7 @@ func TestInitECU(t *testing.T) {
 		resp = append(resp, calculateChecksum(resp))
 		port.out = bytes.NewBuffer(resp)
 
-		conn := ssm2.NewConnection(port, ssm2.NopLogger)
+		conn := ssm2.NewConnection(port, nil)
 
 		ecu, err := conn.InitECU(context.Background())
 		if err != nil {
@@ -266,6 +266,115 @@ func TestInitECU(t *testing.T) {
 		}
 		if ecu.SupportedDerivedParameters["P200"] == nil {
 			t.Fatal("expected P200 derived param to be supported")
+		}
+	})
+}
+
+func TestSendReadAddressesRequest(t *testing.T) {
+	addresses := [][3]byte{
+		{0x00, 0x00, 0x01},
+		{0x00, 0x00, 0x0A},
+	}
+
+	t.Run("ValidRequest", func(t *testing.T) {
+		port := newTestSerialPort()
+
+		resp := []byte{
+			ssm2.PacketMagicByte, ssm2.DeviceDiagnosticTool, ssm2.DeviceEngine,
+			0x01, ssm2.CommandReadAddressesResponse,
+		}
+		resp = append(resp, calculateChecksum(resp))
+		port.out = bytes.NewBuffer(resp)
+
+		conn := ssm2.NewConnection(port, nil)
+
+		_, err := conn.SendReadAddressesRequest(context.Background(), addresses, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got := port.in.Bytes()
+		want := []byte{
+			ssm2.PacketMagicByte, ssm2.DeviceEngine, ssm2.DeviceDiagnosticTool,
+			byte((len(addresses) * 3) + 2), ssm2.CommandReadAddressesRequest, 0x00,
+		}
+		for _, a := range addresses {
+			want = append(want, a[:]...)
+		}
+		want = append(want, calculateChecksum(want))
+
+		if bytes.Compare(want, got) != 0 {
+			t.Fatalf("unexpected read addresses request. want: 0x%x. got: 0x%x.", want, got)
+		}
+
+		port.in = &bytes.Buffer{}
+		port.out = bytes.NewBuffer(resp)
+		_, err = conn.SendReadAddressesRequest(context.Background(), addresses, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got = port.in.Bytes()
+		want = []byte{
+			ssm2.PacketMagicByte, ssm2.DeviceEngine, ssm2.DeviceDiagnosticTool,
+			byte((len(addresses) * 3) + 2), ssm2.CommandReadAddressesRequest, 0x01,
+		}
+		for _, a := range addresses {
+			want = append(want, a[:]...)
+		}
+		want = append(want, calculateChecksum(want))
+
+		if bytes.Compare(want, got) != 0 {
+			t.Fatalf("unexpected read addresses request. want: 0x%x. got: 0x%x.", want, got)
+		}
+	})
+
+	t.Run("ChecksResponseCommand", func(t *testing.T) {
+		port := newTestSerialPort()
+
+		resp := []byte{
+			ssm2.PacketMagicByte, ssm2.DeviceDiagnosticTool, ssm2.DeviceEngine,
+			0x01, ssm2.CommandWriteBlockResponse,
+		}
+		resp = append(resp, calculateChecksum(resp))
+		port.out = bytes.NewBuffer(resp)
+
+		conn := ssm2.NewConnection(port, nil)
+
+		_, err := conn.SendReadAddressesRequest(context.Background(), addresses, false)
+		if !errors.Is(err, ssm2.ErrInvalidResponseCommand) {
+			t.Fatalf("want ErrInvalidResponseCommand (%v). got: %v.", ssm2.ErrInvalidResponseCommand, err)
+		}
+	})
+
+	t.Run("ValidResponse", func(t *testing.T) {
+		port := newTestSerialPort()
+
+		values := []byte{0x20, 0xA1}
+		resp := []byte{
+			ssm2.PacketMagicByte, ssm2.DeviceDiagnosticTool, ssm2.DeviceEngine,
+			byte(len(values) + 1), ssm2.CommandReadAddressesResponse,
+		}
+		resp = append(resp, values...)
+		resp = append(resp, calculateChecksum(resp))
+		port.out = bytes.NewBuffer(resp)
+
+		conn := ssm2.NewConnection(port, nil)
+
+		packet, err := conn.SendReadAddressesRequest(context.Background(), addresses, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		data := packet.Data()
+		if len(data) != 2 {
+			t.Fatalf("invalid data length. want: 2. got: %d.", len(data))
+		}
+		if data[0] != values[0] {
+			t.Fatalf("invalid first byte. want: %x. got: %x.", values[0], data[0])
+		}
+		if data[1] != values[1] {
+			t.Fatalf("invalid second byte. want: %x. got: %x.", values[1], data[1])
 		}
 	})
 }

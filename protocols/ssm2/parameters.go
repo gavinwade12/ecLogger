@@ -69,6 +69,25 @@ func (v ParameterValue) SafeConvertTo(u units.Unit) ParameterValue {
 	return ParameterValue{Unit: u}
 }
 
+func AvailableDerivedParameters(params map[string]*Parameter) map[string]*DerivedParameter {
+	derived := make(map[string]*DerivedParameter)
+
+	for _, p := range DerivedParameters {
+		available := true
+		for _, d := range p.DependsOnParameters {
+			if params[d] == nil {
+				available = false
+				break
+			}
+		}
+		if available {
+			derived[p.Id] = &p
+		}
+	}
+
+	return derived
+}
+
 // Parameters defines all the parameters supported by the SSM2 protocol.
 var Parameters = map[string]Parameter{
 	"P1": {
