@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gavinwade12/ssm2/protocols/ssm2"
+	"github.com/gavinwade12/ssm2/units"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +21,12 @@ func init() {
 	rootCmd.AddCommand(logCmd)
 
 	logCmd.Flags().StringVar(&logFileFormat, "logFileFormat", "{{romID}}-{{timestamp}}.csv", "The format used for generating a log file name (path included). Variables can be injected using the format {{variableName}}. Supported variables: romID, timestamp.")
+}
+
+type loggedParameter struct {
+	Id      string
+	Derived bool
+	Unit    *units.Unit
 }
 
 var logCmd = &cobra.Command{
@@ -34,7 +41,7 @@ var logCmd = &cobra.Command{
 			return errors.New("a log file name format is required")
 		}
 
-		conn, err := ssm2.NewConnection(port, ssm2Logger(cmd))
+		conn, err := createSSM2Conn(port, ssm2Logger(cmd))
 		if err != nil {
 			return errors.Wrap(err, "creating new connection")
 		}
@@ -46,27 +53,32 @@ var logCmd = &cobra.Command{
 		// send an init command until a successful response or interruption is received
 		stdOut := cmd.OutOrStdout()
 		fmt.Fprintln(stdOut, "initializing with ECU and determining supported parameters...")
-		var resp ssm2.InitResponse
-		for resp == nil {
-			resp, err = conn.SendInitCommand(ctx)
+		var ecu *ssm2.ECU
+		for ecu == nil {
+			ecu, err = conn.InitECU(ctx)
 			if err == nil {
 				break
 			}
 
-			if !errors.Is(err, ssm2.ErrorReadTimeout) {
+			if !errors.Is(err, ssm2.ErrReadTimeout) {
 				return errors.Wrap(err, "sending init request")
 			}
-			resp = nil
+			ecu = nil
 
 			fmt.Println("read timed out")
-			if err = conn.Initialize(); err != nil {
-				return errors.Wrap(err, "re-initailizing connection")
+			if err = conn.Close(); err != nil {
+				return errors.Wrap(err, "closing ssm2 connection")
+			}
+
+			conn, err = createSSM2Conn(port, ssm2Logger(cmd))
+			if err != nil {
+				return errors.Wrap(err, "creating new connection")
 			}
 		}
 		fmt.Fprintln(stdOut, "initialized")
 
 		logFileFormat = strings.NewReplacer(
-			"romID", string(resp.ROM_ID()),
+			"romID", string(ecu.ROM_ID),
 			"timestamp", time.Now().Format("yyyyMMdd_hhmmss"),
 		).Replace(logFileFormat)
 		fmt.Fprintf(stdOut, "logging to file: %s\n", logFileFormat)
@@ -78,19 +90,16 @@ var logCmd = &cobra.Command{
 		defer f.Close()
 
 		// gather the parameters to log
-		capabilities := resp.Capabilities()
 		loggedParams := []ssm2.Parameter{}
 		headers := []string{}
 		addressesToRead := [][3]byte{}
-		for _, param := range ssm2.Parameters {
-			if !capabilities.Contains(param) {
-				continue
-			}
+		for _, param := range ecu.SupportedParameters {
+			headers = append(headers, param.Name)
+			loggedParams = append(loggedParams, *param)
+			addressesToRead = append(addressesToRead, param.Address.Address)
 
-			loggedParams = append(loggedParams, param)
-			if param.Address != nil {
-				headers = append(headers, param.Name)
-				addressesToRead = append(addressesToRead, param.Address.Address)
+			if len(headers) == 10 {
+				break
 			}
 		}
 

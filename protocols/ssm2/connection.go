@@ -9,47 +9,13 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"go.bug.st/serial"
-	"go.bug.st/serial/enumerator"
 )
 
-// SerialPort describes a serial port on the host.
-type SerialPort struct {
-	PortName  string
-	Product   string
-	IsUSB     bool
-	VendorID  string
-	ProductID string
-}
-
-// AvailablePorts returns all available serial ports on the current host.
-func AvailablePorts() ([]SerialPort, error) {
-	list, err := enumerator.GetDetailedPortsList()
-	if err != nil {
-		return nil, err
-	}
-
-	ports := make([]SerialPort, len(list))
-	for i, p := range list {
-		ports[i] = SerialPort{
-			PortName:  p.Name,
-			Product:   p.Product,
-			IsUSB:     p.IsUSB,
-			VendorID:  p.VID,
-			ProductID: p.PID,
-		}
-	}
-
-	return ports, nil
-}
-
-// Connection provides high-level methods for communicating with
-// an ECU.
+// Connection provides high-level methods for communicating with an ECU
+// via the SSM2 protocol.
 type Connection struct {
-	portName   string
 	serialPort io.ReadWriteCloser
-
-	logger Logger
+	logger     Logger
 }
 
 const (
@@ -65,120 +31,62 @@ const (
 	ConnectionTotalReadTimeout time.Duration = time.Millisecond * 5000
 )
 
-// NewConnection returns a new Connection with the serial port already initialized.
-func NewConnection(portName string, l Logger) (*Connection, error) {
+// NewConnection returns a new Connection.
+func NewConnection(serialPort io.ReadWriteCloser, l Logger) *Connection {
 	if l == nil {
 		l = NopLogger
 	}
-	c := &Connection{portName: portName, logger: l}
-	err := c.Initialize()
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing serial port")
+	return &Connection{
+		serialPort: serialPort,
+		logger:     l,
 	}
-
-	return c, nil
-}
-
-// Initialize opens the serial port and configures it. If a conncetion already exists on the port,
-// it will be closed before it's re-opened and configured.
-func (c *Connection) Initialize() error {
-	if c.serialPort != nil {
-		c.logger.Debugf("closing serial connection to %s\n", c.portName)
-		if err := c.serialPort.Close(); err != nil {
-			return errors.Wrap(err, "closing existing serial port during initialization")
-		}
-		c.serialPort = nil
-	}
-
-	c.logger.Debugf("opening serial connection to %s\n", c.portName)
-	sp, err := serial.Open(c.portName, &serial.Mode{
-		BaudRate: ConnectionBaudRate,
-		DataBits: ConnectionDataBits,
-		Parity:   serial.NoParity,
-		StopBits: serial.OneStopBit,
-	})
-	if err != nil {
-		return errors.Wrapf(err, "opening serial port '%s'", c.portName)
-	}
-
-	if err = sp.SetReadTimeout(ConnectionReadTimeout); err != nil {
-		return errors.Wrap(err, "setting connection read timeout")
-	}
-
-	c.serialPort = sp
-
-	return nil
-}
-
-func (c *Connection) SerialPort() io.ReadWriter {
-	return c.serialPort
-}
-
-// Close releases any resouces held by the connection e.g. the connection over the serial port.
-func (c *Connection) Close() error {
-	if c.serialPort == nil {
-		return nil
-	}
-
-	c.logger.Debugf("opening serial connection to %s\n", c.portName)
-	err := c.serialPort.Close()
-	if err != nil {
-		return errors.Wrap(err, "closing serial port")
-	}
-
-	c.serialPort = nil
-
-	return nil
 }
 
 const (
-	deviceNone                   byte = 0
-	deviceEngine                 byte = 0x10
-	deviceTransmission           byte = 0x18
-	deviceDiagnosticTool         byte = 0xf0
-	deviceFastModeDiagnosticTool byte = 0xf2
+	DeviceEngine                 byte = 0x10
+	DeviceTransmission           byte = 0x18
+	DeviceDiagnosticTool         byte = 0xf0
+	DeviceFastModeDiagnosticTool byte = 0xf2
 
-	commandNone                  byte = 0
-	commandReadBlockRequest      byte = 0xa0
-	commandReadBlockResponse     byte = 0xe0
-	commandReadAddressesRequest  byte = 0xa8
-	commandReadAddressesResponse byte = 0xe8
-	commandWriteBlockRequest     byte = 0xb0
-	commandWriteBlockResponse    byte = 0xf0
-	commandWriteAddressRequest   byte = 0xb8
-	commandWriteAddressResponse  byte = 0xf8
-	commandInitRequest           byte = 0xbf
-	commandInitResponse          byte = 0xff
+	CommandReadBlockRequest      byte = 0xa0
+	CommandReadBlockResponse     byte = 0xe0
+	CommandReadAddressesRequest  byte = 0xa8
+	CommandReadAddressesResponse byte = 0xe8
+	CommandWriteBlockRequest     byte = 0xb0
+	CommandWriteBlockResponse    byte = 0xf0
+	CommandWriteAddressRequest   byte = 0xb8
+	CommandWriteAddressResponse  byte = 0xf8
+	CommandInitRequest           byte = 0xbf
+	CommandInitResponse          byte = 0xff
 )
 
-var devices = []byte{
-	deviceNone, deviceEngine, deviceTransmission, deviceDiagnosticTool,
-	deviceFastModeDiagnosticTool,
-}
+var (
+	// ErrInvalidResponseCommand is returned when a packet is sent and
+	// the ECU doesn't respond with the proper command corresponding to the
+	// sent command.
+	ErrInvalidResponseCommand = errors.New("invalid response command")
 
-var commands = []byte{
-	commandNone, commandReadBlockRequest, commandReadBlockResponse,
-	commandReadAddressesRequest, commandReadAddressesResponse,
-	commandWriteBlockRequest, commandWriteBlockResponse,
-	commandWriteAddressRequest, commandWriteAddressResponse,
-	commandInitRequest, commandInitResponse,
-}
+	// ErrInvalidChecksumByte is returned when a packet is received from
+	// the ECU and the checksum byte doesn't match the calculated checksum byte.
+	ErrInvalidChecksumByte = errors.New("invalid checksum byte")
 
-// SendInitCommand sends an init command to the ECU and returns its response. This is useful for
-// getting information about the ECU and which parameters it supports.
-func (c *Connection) SendInitCommand(ctx context.Context) (InitResponse, error) {
-	p := newPacket(deviceDiagnosticTool, deviceEngine, commandInitRequest, nil)
+	// ErrReadTimeout is returned when reading a packet times out.
+	ErrReadTimeout = errors.New("the read operation timed out")
+)
+
+// InitECU sends an init Command to the ECU and parses the response.
+func (c *Connection) InitECU(ctx context.Context) (*ECU, error) {
+	p := newPacket(DeviceDiagnosticTool, DeviceEngine, CommandInitRequest, nil)
 	rp, err := c.sendPacket(ctx, p)
 	if err != nil {
 		return nil, errors.Wrap(err, "sending packet")
 	}
 
-	if rp[PacketIndexCommand] != byte(commandInitResponse) {
-		return nil, errors.New(fmt.Sprintf("unexpected response code %x (expected %x)",
-			rp[PacketIndexCommand], commandInitResponse))
+	if rp[PacketIndexCommand] != byte(CommandInitResponse) {
+		return nil, ErrInvalidResponseCommand
 	}
 
-	return InitResponse(rp), nil
+	return parseECUFromInitResponse(rp), nil
 }
 
 // ReadAddressses sends a read addresses request to the ECU. The results should be fetched via NextPacket().
@@ -198,15 +106,14 @@ func (c *Connection) SendReadAddressesRequest(ctx context.Context, addresses [][
 		}
 	}
 
-	p := newPacket(deviceDiagnosticTool, deviceEngine, commandReadAddressesRequest, data)
+	p := newPacket(DeviceDiagnosticTool, DeviceEngine, CommandReadAddressesRequest, data)
 	rp, err := c.sendPacket(ctx, p)
 	if err != nil {
 		return nil, errors.Wrap(err, "sending packet")
 	}
 
-	if rp[PacketIndexCommand] != byte(commandReadAddressesResponse) {
-		return nil, errors.New(fmt.Sprintf("unexpected response code %x (expected %x)",
-			rp[PacketIndexCommand], commandReadAddressesResponse))
+	if rp[PacketIndexCommand] != byte(CommandReadAddressesResponse) {
+		return nil, ErrInvalidResponseCommand
 	}
 
 	return rp, nil
@@ -228,11 +135,11 @@ func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 	for currentCommand == sentCommand { // make sure we aren't reading back the packet we just sent
 		p, err = c.NextPacket(ctx)
 		if err != nil {
-			return nil, errors.Wrap(err, "reading second response packet")
+			return nil, errors.Wrap(err, "reading response packet")
 		}
 		currentCommand = p[PacketIndexCommand]
 		if currentCommand == sentCommand {
-			c.logger.Debug("read back same command")
+			c.logger.Debug("read back same Command")
 		}
 	}
 
@@ -262,7 +169,7 @@ func (c *Connection) NextPacket(ctx context.Context) (Packet, error) {
 
 	packet := Packet(append(header, payload...))
 	if calculateChecksum(packet) != packet[len(packet)-1] {
-		return nil, errors.New("invalid checksum byte")
+		return nil, ErrInvalidChecksumByte
 	}
 	return packet, nil
 }
@@ -271,8 +178,6 @@ type readResult struct {
 	count int
 	err   error
 }
-
-var ErrorReadTimeout = errors.New("the read operation timed out")
 
 func (c *Connection) readInFull(ctx context.Context, b []byte) error {
 	// start a goroutine to read the buffer in full
@@ -304,10 +209,20 @@ func (c *Connection) readInFull(ctx context.Context, b []byte) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.NewTimer(ConnectionTotalReadTimeout).C:
-		return ErrorReadTimeout
+		return ErrReadTimeout
 	case r := <-result:
 		return r.err
 	}
+}
+
+func (c *Connection) Close() error {
+	c.logger.Debug("closing connection")
+
+	if c.serialPort != nil {
+		return c.serialPort.Close()
+	}
+
+	return nil
 }
 
 func (c *Connection) waitForNBytesToTransfer(ctx context.Context, n int) error {

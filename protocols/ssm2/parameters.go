@@ -3,7 +3,7 @@ package ssm2
 import (
 	"encoding/binary"
 
-	"github.com/pkg/errors"
+	"github.com/gavinwade12/ssm2/units"
 )
 
 // Parameter represents a parameter that can be read from the ECU.
@@ -15,7 +15,7 @@ type Parameter struct {
 	// CapabilityByteIndex points to the capability byte containing the parameter's flag.
 	CapabilityByteIndex uint
 	// CapabilityBitIndex is the index of the bit flag within the byte containing the parameter's flag.
-	CapabilityBitIndex uint
+	CapabilityBitIndex uint8
 
 	// Address is present when the parameter value is read from RAM instead of calculated
 	Address *ParameterAddress
@@ -41,113 +41,27 @@ type ParameterAddress struct {
 	Length  int // used when the value takes more than 1 address e.g. a 32-bit value on a 16-bit ECU
 }
 
-// Unit provides common values for units used to describe a parameter's value.
-type Unit string
-
-// The valid units.
-const (
-	// Velocity
-	UnitMPH Unit = "mph"
-	UnitKMH Unit = "km/h"
-
-	// Distance
-	UnitMiles      Unit = "miles"
-	UnitKilometers Unit = "km"
-
-	// Rotational Speed
-	UnitRPM Unit = "rpm"
-
-	// Timing
-	UnitDegress = "degrees"
-
-	// Temperature
-	UnitF Unit = "F"
-	UnitC Unit = "C"
-
-	// Pressure
-	UnitPSI  Unit = "psi"
-	UnitBAR  Unit = "bar"
-	UnitKPA  Unit = "kPa"
-	UnitHPA  Unit = "hPa"
-	UnitMPA  Unit = "MPa"
-	UnitInHG Unit = "inHg"
-	UnitMmHG Unit = "mmHg"
-
-	// Airflow
-	UnitGS Unit = "g/s"
-
-	// Fueling
-	UnitAFR                    = "AFR"
-	UnitLambda                 = "Lambda"
-	UnitDegreesCrankAngle Unit = "°CA"
-	UnitMM3PerStroke      Unit = "mm³/st"
-	UnitMGPerCylinder     Unit = "mg/cyl"
-
-	// Fuel Efficiency
-	UnitMPGUS    Unit = "mpg (US)"
-	UnitMPGUK    Unit = "mpg (UK)"
-	UnitKMPerL   Unit = "km/l"
-	UnitLPer100K Unit = "l/100k"
-
-	// Electricity
-	UnitVolts     Unit = "V"
-	UnitAmps      Unit = "A"
-	UnitMilliamps Unit = "mA"
-	UnitOhms      Unit = "ohm"
-
-	// Time
-	UnitTime Unit = "Time"
-	UnitMS   Unit = "ms"
-	UnitUS   Unit = "µs"
-
-	// Misc
-	UnitPercent                Unit = "%"
-	UnitSteps                  Unit = "steps"
-	UnitGear                   Unit = "gear"
-	UnitCount                  Unit = "count"
-	UnitMisfireCount           Unit = "misfire count"
-	UnitMultiplier             Unit = "multiplier"
-	UnitIndex                  Unit = "index"
-	UnitRaw                    Unit = "raw ecu value"
-	UnitDegreesPerSecond       Unit = "degrees/s"
-	UnitMetersPerSecondSquared Unit = "m/s²"
-	UnitGramsPerRev            Unit = "g/rev"
-	UnitTimes                  Unit = "Times"
-	UnitGrams                  Unit = "g"
-	UnitCoefficient            Unit = "coefficient"
-	UnitNm                     Unit = "Nm"
-)
-
 // Parameter value stores a parameter's value with its current unit.
 type ParameterValue struct {
 	Value float32
-	Unit  Unit
+	Unit  units.Unit
 }
 
-// ErrorInvalidConversion is returned when an invalid unit conversion attempt is made.
-var ErrorInvalidConversion = errors.New("units are invalid for conversion")
-
 // ConvertTo converts a parameter value from its current unit to the given unit.
-// ErrorInvalidConversion is returned if the unit conversion is invalid.
-func (v ParameterValue) ConvertTo(u Unit) (*ParameterValue, error) {
+func (v ParameterValue) ConvertTo(u units.Unit) (*ParameterValue, error) {
 	if u == v.Unit {
 		return &ParameterValue{v.Value, v.Unit}, nil
 	}
 
-	conversions := UnitConversions[v.Unit]
-	if conversions == nil {
-		return nil, ErrorInvalidConversion
+	val, err := units.Convert(v.Value, v.Unit, u)
+	if err != nil {
+		return nil, err
 	}
 
-	convert := conversions[u]
-	if convert == nil {
-		return nil, ErrorInvalidConversion
-	}
-
-	return &ParameterValue{Value: convert(v.Value), Unit: u}, nil
+	return &ParameterValue{Value: val, Unit: u}, nil
 }
 
-func (v ParameterValue) SafeConvertTo(u Unit) ParameterValue {
+func (v ParameterValue) SafeConvertTo(u units.Unit) ParameterValue {
 	pv, _ := v.ConvertTo(u)
 	if pv != nil {
 		return *pv
@@ -168,7 +82,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P2": {
@@ -182,7 +96,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 40, UnitC}
+			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
 	},
 	"P3": {
@@ -196,7 +110,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
 	},
 	"P4": {
@@ -210,7 +124,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
 	},
 	"P5": {
@@ -224,7 +138,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
 	},
 	"P6": {
@@ -238,7 +152,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
 	},
 	"P7": {
@@ -252,7 +166,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKPA}
+			return ParameterValue{float32(v[0]), units.KPA}
 		},
 	},
 	"P8": {
@@ -266,7 +180,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 4, UnitRPM}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 4, units.RPM}
 		},
 	},
 	"P9": {
@@ -280,7 +194,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKMH}
+			return ParameterValue{float32(v[0]), units.KMH}
 		},
 	},
 	"P10": {
@@ -294,7 +208,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 2, UnitDegress}
+			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
 		},
 	},
 	"P11": {
@@ -308,7 +222,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 40, UnitC}
+			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
 	},
 	"P12": {
@@ -322,7 +236,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 100, UnitGS}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 100, units.GS}
 		},
 	},
 	"P13": {
@@ -336,7 +250,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P14": {
@@ -350,7 +264,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, UnitVolts}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, units.Volts}
 		},
 	},
 	"P15": {
@@ -364,7 +278,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, UnitVolts}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, units.Volts}
 		},
 	},
 	"P16": {
@@ -378,7 +292,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, UnitVolts}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, units.Volts}
 		},
 	},
 	"P17": {
@@ -392,7 +306,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 8 / 100, UnitVolts}
+			return ParameterValue{float32(v[0]) * 8 / 100, units.Volts}
 		},
 	},
 	"P18": {
@@ -406,7 +320,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P19": {
@@ -420,7 +334,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P20": {
@@ -434,7 +348,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P21": {
@@ -448,7 +362,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 256, UnitUS}
+			return ParameterValue{float32(v[0]) * 256, units.US}
 		},
 	},
 	"P22": {
@@ -462,7 +376,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 256, UnitUS}
+			return ParameterValue{float32(v[0]) * 256, units.US}
 		},
 	},
 	"P23": {
@@ -476,7 +390,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 2, UnitDegress}
+			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
 		},
 	},
 	"P24": {
@@ -490,7 +404,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKPA}
+			return ParameterValue{float32(v[0]), units.KPA}
 		},
 	},
 	"P25": {
@@ -504,7 +418,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 128, UnitKPA}
+			return ParameterValue{float32(v[0]) - 128, units.KPA}
 		},
 	},
 	"P26": {
@@ -518,7 +432,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 128, UnitKPA}
+			return ParameterValue{float32(v[0]) - 128, units.KPA}
 		},
 	},
 	"P27": {
@@ -532,7 +446,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 4, UnitHPA}
+			return ParameterValue{(float32(v[0]) - 128) / 4, units.HPA}
 		},
 	},
 	"P28": {
@@ -546,7 +460,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P29": {
@@ -560,7 +474,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 2, UnitDegress}
+			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
 		},
 	},
 	"P30": {
@@ -574,7 +488,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P31": {
@@ -588,7 +502,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 40, UnitC}
+			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
 	},
 	"P32": {
@@ -602,7 +516,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 1004 / 25600, UnitAmps}
+			return ParameterValue{float32(v[0]) * 1004 / 25600, units.Amps}
 		},
 	},
 	"P33": {
@@ -616,7 +530,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 1004 / 25600, UnitAmps}
+			return ParameterValue{float32(v[0]) * 1004 / 25600, units.Amps}
 		},
 	},
 	"P34": {
@@ -630,7 +544,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 1004 / 25600, UnitAmps}
+			return ParameterValue{float32(v[0]) * 1004 / 25600, units.Amps}
 		},
 	},
 	"P35": {
@@ -644,7 +558,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P36": {
@@ -658,7 +572,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P37": {
@@ -672,7 +586,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P38": {
@@ -686,7 +600,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P39": {
@@ -700,7 +614,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P40": {
@@ -714,7 +628,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P41": {
@@ -728,7 +642,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 2, UnitPercent}
+			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
 	},
 	"P42": {
@@ -742,7 +656,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P43": {
@@ -756,7 +670,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P44": {
@@ -770,7 +684,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitSteps}
+			return ParameterValue{float32(v[0]), units.Steps}
 		},
 	},
 	"P45": {
@@ -784,7 +698,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitSteps}
+			return ParameterValue{float32(v[0]), units.Steps}
 		},
 	},
 	"P46": {
@@ -798,7 +712,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitPercent}
+			return ParameterValue{float32(v[0]), units.Percent}
 		},
 	},
 	"P47": {
@@ -812,7 +726,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P48": {
@@ -826,7 +740,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, UnitDegress}
+			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
 	},
 	"P49": {
@@ -840,7 +754,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, UnitDegress}
+			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
 	},
 	"P50": {
@@ -854,7 +768,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P51": {
@@ -868,7 +782,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P52": {
@@ -882,7 +796,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitMilliamps}
+			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
 	},
 	"P53": {
@@ -896,7 +810,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitMilliamps}
+			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
 	},
 	"P54": {
@@ -910,7 +824,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 8, UnitMilliamps}
+			return ParameterValue{(float32(v[0]) - 128) / 8, units.Milliamps}
 		},
 	},
 	"P55": {
@@ -924,7 +838,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 8, UnitMilliamps}
+			return ParameterValue{(float32(v[0]) - 128) / 8, units.Milliamps}
 		},
 	},
 	"P56": {
@@ -938,7 +852,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitOhms}
+			return ParameterValue{float32(v[0]), units.Ohms}
 		},
 	},
 	"P57": {
@@ -952,7 +866,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitOhms}
+			return ParameterValue{float32(v[0]), units.Ohms}
 		},
 	},
 	"P58": {
@@ -966,7 +880,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 128, UnitLambda}
+			return ParameterValue{float32(v[0]) / 128, units.Lambda}
 		},
 	},
 	"P59": {
@@ -980,7 +894,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 128, UnitLambda}
+			return ParameterValue{float32(v[0]) / 128, units.Lambda}
 		},
 	},
 	"P60": {
@@ -994,7 +908,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) + 1, UnitGear}
+			return ParameterValue{float32(v[0]) + 1, units.Gear}
 		},
 	},
 	"P61": {
@@ -1008,7 +922,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 10, UnitAmps}
+			return ParameterValue{float32(v[0]) / 10, units.Amps}
 		},
 	},
 	"P62": {
@@ -1022,7 +936,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 10, UnitAmps}
+			return ParameterValue{float32(v[0]) / 10, units.Amps}
 		},
 	},
 	"P63": {
@@ -1036,7 +950,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMisfireCount}
+			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
 	},
 	"P64": {
@@ -1050,7 +964,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMisfireCount}
+			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
 	},
 	"P65": {
@@ -1064,7 +978,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
 	},
 	"P66": {
@@ -1078,7 +992,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
 	},
 	"P67": {
@@ -1092,7 +1006,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P68": {
@@ -1106,7 +1020,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P69": {
@@ -1120,7 +1034,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMisfireCount}
+			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
 	},
 	"P70": {
@@ -1134,7 +1048,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMisfireCount}
+			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
 	},
 	"P71": {
@@ -1148,7 +1062,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
 	},
 	"P72": {
@@ -1162,7 +1076,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 8 / 100, UnitVolts}
+			return ParameterValue{float32(v[0]) * 8 / 100, units.Volts}
 		},
 	},
 	"P73": {
@@ -1176,7 +1090,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P74": {
@@ -1190,7 +1104,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P75": {
@@ -1204,7 +1118,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P76": {
@@ -1218,7 +1132,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P77": {
@@ -1232,7 +1146,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKPA}
+			return ParameterValue{float32(v[0]), units.KPA}
 		},
 	},
 	"P78": {
@@ -1246,7 +1160,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 25, UnitMPA}
+			return ParameterValue{float32(v[0]) / 25, units.MPA}
 		},
 	},
 	"P79": {
@@ -1260,7 +1174,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) + 40) * 5, UnitC}
+			return ParameterValue{(float32(v[0]) + 40) * 5, units.C}
 		},
 	},
 	"P80": {
@@ -1274,7 +1188,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 256, UnitUS}
+			return ParameterValue{float32(v[0]) * 256, units.US}
 		},
 	},
 	"P81": {
@@ -1288,7 +1202,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitSteps}
+			return ParameterValue{float32(v[0]), units.Steps}
 		},
 	},
 	"P82": {
@@ -1302,7 +1216,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKMH}
+			return ParameterValue{float32(v[0]), units.KMH}
 		},
 	},
 	"P83": {
@@ -1316,7 +1230,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, UnitDegress}
+			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
 	},
 	"P84": {
@@ -1330,7 +1244,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, UnitDegress}
+			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
 	},
 	"P85": {
@@ -1344,7 +1258,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P86": {
@@ -1358,7 +1272,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 100 / 255, UnitPercent}
+			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
 	},
 	"P87": {
@@ -1372,7 +1286,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitMilliamps}
+			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
 	},
 	"P88": {
@@ -1386,7 +1300,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitMilliamps}
+			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
 	},
 	"P89": {
@@ -1400,7 +1314,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) * .078125) - 5, UnitPercent}
+			return ParameterValue{(float32(v[0]) * .078125) - 5, units.Percent}
 		},
 	},
 	"P90": {
@@ -1414,7 +1328,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 16, UnitMultiplier}
+			return ParameterValue{float32(v[0]) / 16, units.Multiplier}
 		},
 	},
 	"P91": {
@@ -1428,7 +1342,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) * 0.25) - 32, UnitDegress}
+			return ParameterValue{(float32(v[0]) * 0.25) - 32, units.Degress}
 		},
 	},
 	"P92": {
@@ -1442,7 +1356,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitPercent}
+			return ParameterValue{float32(v[0]), units.Percent}
 		},
 	},
 	"P93": {
@@ -1456,7 +1370,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKMH}
+			return ParameterValue{float32(v[0]), units.KMH}
 		},
 	},
 	"P94": {
@@ -1470,7 +1384,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitIndex}
+			return ParameterValue{float32(v[0]), units.Index}
 		},
 	},
 	"P95": {
@@ -1484,7 +1398,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 2, UnitPercent}
+			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
 	},
 	"P96": {
@@ -1498,7 +1412,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 2, UnitPercent}
+			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
 	},
 	"P97": {
@@ -1512,7 +1426,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 2, UnitPercent}
+			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
 	},
 	"P98": {
@@ -1526,7 +1440,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 45, UnitVolts}
+			return ParameterValue{float32(v[0]) / 45, units.Volts}
 		},
 	},
 	"P99": {
@@ -1540,7 +1454,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitRPM}
+			return ParameterValue{float32(v[0]) * 32, units.RPM}
 		},
 	},
 	"P100": {
@@ -1554,7 +1468,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 2, UnitPercent}
+			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
 	},
 	"P101": {
@@ -1568,7 +1482,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKMH}
+			return ParameterValue{float32(v[0]), units.KMH}
 		},
 	},
 	"P102": {
@@ -1582,7 +1496,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P103": {
@@ -1596,7 +1510,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P104": {
@@ -1610,7 +1524,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, UnitC}
+			return ParameterValue{float32(v[0]) - 50, units.C}
 		},
 	},
 	"P105": {
@@ -1624,7 +1538,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 2, UnitPercent}
+			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
 	},
 	"P106": {
@@ -1638,7 +1552,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 2, UnitPercent}
+			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
 	},
 	"P107": {
@@ -1652,7 +1566,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 2, UnitPercent}
+			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
 	},
 	"P108": {
@@ -1666,7 +1580,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, UnitC}
+			return ParameterValue{float32(v[0]) - 50, units.C}
 		},
 	},
 	"P109": {
@@ -1680,7 +1594,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 51, UnitVolts}
+			return ParameterValue{float32(v[0]) / 51, units.Volts}
 		},
 	},
 	"P110": {
@@ -1694,7 +1608,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitRPM}
+			return ParameterValue{float32(v[0]) * 32, units.RPM}
 		},
 	},
 	"P111": {
@@ -1708,7 +1622,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitRPM}
+			return ParameterValue{float32(v[0]) * 32, units.RPM}
 		},
 	},
 	"P112": {
@@ -1722,7 +1636,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 32, UnitAmps}
+			return ParameterValue{float32(v[0]) / 32, units.Amps}
 		},
 	},
 	"P113": {
@@ -1736,7 +1650,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 32, UnitAmps}
+			return ParameterValue{float32(v[0]) / 32, units.Amps}
 		},
 	},
 	"P114": {
@@ -1750,7 +1664,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitIndex}
+			return ParameterValue{float32(v[0]), units.Index}
 		},
 	},
 	"P115": {
@@ -1764,7 +1678,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitVolts}
+			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
 	},
 	"P116": {
@@ -1778,7 +1692,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0])*5 + 200, UnitC}
+			return ParameterValue{float32(v[0])*5 + 200, units.C}
 		},
 	},
 	"P117": {
@@ -1792,7 +1706,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 64) / 128 * 10, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 64) / 128 * 10, units.Percent}
 		},
 	},
 	"P118": {
@@ -1806,7 +1720,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 128 * 100, UnitPercent}
+			return ParameterValue{(float32(v[0]) - 128) / 128 * 100, units.Percent}
 		},
 	},
 	"P119": {
@@ -1820,7 +1734,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 4 / 2, UnitOhms}
+			return ParameterValue{float32(v[0]) * 4 / 2, units.Ohms}
 		},
 	},
 	"P120": {
@@ -1834,7 +1748,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 2, UnitKilometers}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 2, units.Kilometers}
 		},
 	},
 	"P121": {
@@ -1848,7 +1762,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 10, UnitBAR}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 10, units.BAR}
 		},
 	},
 	"P122": {
@@ -1862,7 +1776,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 40, UnitC}
+			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
 	},
 	"P123": {
@@ -1876,7 +1790,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255 * 100, UnitPercent}
+			return ParameterValue{float32(v[0]) / 255 * 100, units.Percent}
 		},
 	},
 	"P124": {
@@ -1890,7 +1804,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255 * 100, UnitPercent}
+			return ParameterValue{float32(v[0]) / 255 * 100, units.Percent}
 		},
 	},
 	"P125": {
@@ -1904,7 +1818,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitMilliamps}
+			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
 	},
 	"P126": {
@@ -1918,7 +1832,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 32, UnitMilliamps}
+			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
 	},
 	"P127": {
@@ -1932,7 +1846,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitRaw}
+			return ParameterValue{float32(v[0]), units.Raw}
 		},
 	},
 	"P128": {
@@ -1946,7 +1860,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255, UnitAmps}
+			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
 	},
 	"P129": {
@@ -1960,7 +1874,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255, UnitAmps}
+			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
 	},
 	"P130": {
@@ -1974,7 +1888,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255, UnitAmps}
+			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
 	},
 	"P131": {
@@ -1988,7 +1902,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255, UnitAmps}
+			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
 	},
 	"P132": {
@@ -2002,7 +1916,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255, UnitAmps}
+			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
 	},
 	"P133": {
@@ -2016,7 +1930,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255, UnitAmps}
+			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
 	},
 	"P134": {
@@ -2030,7 +1944,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255, UnitAmps}
+			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
 	},
 	"P135": {
@@ -2044,7 +1958,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 51, UnitVolts}
+			return ParameterValue{float32(v[0]) / 51, units.Volts}
 		},
 	},
 	"P136": {
@@ -2058,7 +1972,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitKPA}
+			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
 	},
 	"P137": {
@@ -2072,7 +1986,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitKPA}
+			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
 	},
 	"P138": {
@@ -2086,7 +2000,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitKPA}
+			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
 	},
 	"P139": {
@@ -2100,7 +2014,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitKPA}
+			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
 	},
 	"P140": {
@@ -2114,7 +2028,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitKPA}
+			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
 	},
 	"P141": {
@@ -2128,7 +2042,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitKPA}
+			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
 	},
 	"P142": {
@@ -2142,7 +2056,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitKPA}
+			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
 	},
 	"P143": {
@@ -2156,7 +2070,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 51, UnitVolts}
+			return ParameterValue{float32(v[0]) / 51, units.Volts}
 		},
 	},
 	"P144": {
@@ -2170,7 +2084,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKMH}
+			return ParameterValue{float32(v[0]), units.KMH}
 		},
 	},
 	"P145": {
@@ -2184,7 +2098,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKMH}
+			return ParameterValue{float32(v[0]), units.KMH}
 		},
 	},
 	"P146": {
@@ -2198,7 +2112,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKMH}
+			return ParameterValue{float32(v[0]), units.KMH}
 		},
 	},
 	"P147": {
@@ -2212,7 +2126,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKMH}
+			return ParameterValue{float32(v[0]), units.KMH}
 		},
 	},
 	"P148": {
@@ -2226,7 +2140,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitDegress}
+			return ParameterValue{float32(v[0]), units.Degress}
 		},
 	},
 	"P149": {
@@ -2240,7 +2154,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 255, UnitAmps}
+			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
 	},
 	"P150": {
@@ -2254,7 +2168,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitKPA}
+			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
 	},
 	"P151": {
@@ -2268,7 +2182,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMisfireCount}
+			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
 	},
 	"P152": {
@@ -2282,7 +2196,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMisfireCount}
+			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
 	},
 	"P153": {
@@ -2296,7 +2210,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 16, UnitDegress}
+			return ParameterValue{float32(v[0]) / 16, units.Degress}
 		},
 	},
 	"P154": {
@@ -2310,7 +2224,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 2, UnitHPA}
+			return ParameterValue{(float32(v[0]) - 128) / 2, units.HPA}
 		},
 	},
 	"P155": {
@@ -2324,7 +2238,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0])/5 - 15, UnitDegreesCrankAngle}
+			return ParameterValue{float32(v[0])/5 - 15, units.DegreesCrankAngle}
 		},
 	},
 	"P156": {
@@ -2338,7 +2252,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 256, UnitMM3PerStroke}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 256, units.MM3PerStroke}
 		},
 	},
 	"P157": {
@@ -2352,7 +2266,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitCount}
+			return ParameterValue{float32(v[0]), units.Count}
 		},
 	},
 	"P158": {
@@ -2366,7 +2280,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKPA}
+			return ParameterValue{float32(v[0]), units.KPA}
 		},
 	},
 	"P159": {
@@ -2380,7 +2294,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitMGPerCylinder}
+			return ParameterValue{float32(v[0]) * 10, units.MGPerCylinder}
 		},
 	},
 	"P160": {
@@ -2394,7 +2308,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 10, UnitMGPerCylinder}
+			return ParameterValue{float32(v[0]) * 10, units.MGPerCylinder}
 		},
 	},
 	"P161": {
@@ -2408,7 +2322,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, UnitDegress}
+			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
 	},
 	"P162": {
@@ -2422,7 +2336,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, UnitDegress}
+			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
 	},
 	"P163": {
@@ -2436,7 +2350,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitPercent}
+			return ParameterValue{float32(v[0]), units.Percent}
 		},
 	},
 	"P164": {
@@ -2450,7 +2364,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMPA}
+			return ParameterValue{float32(v[0]), units.MPA}
 		},
 	},
 	"P165": {
@@ -2464,7 +2378,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMPA}
+			return ParameterValue{float32(v[0]), units.MPA}
 		},
 	},
 	"P166": {
@@ -2478,7 +2392,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 40, UnitC}
+			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
 	},
 	"P167": {
@@ -2492,7 +2406,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 4, UnitRPM}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 4, units.RPM}
 		},
 	},
 	"P168": {
@@ -2506,7 +2420,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 128, UnitPercent}
+			return ParameterValue{float32(v[0]) - 128, units.Percent}
 		},
 	},
 	"P169": {
@@ -2520,7 +2434,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitAmps}
+			return ParameterValue{float32(v[0]), units.Amps}
 		},
 	},
 	"P170": {
@@ -2534,7 +2448,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), UnitMilliamps}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.Milliamps}
 		},
 	},
 	"P171": {
@@ -2548,7 +2462,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 0.19118, UnitDegreesPerSecond}
+			return ParameterValue{float32(v[0]) * 0.19118, units.DegreesPerSecond}
 		},
 	},
 	"P172": {
@@ -2562,7 +2476,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 1.0862, UnitMetersPerSecondSquared}
+			return ParameterValue{float32(v[0]) * 1.0862, units.MetersPerSecondSquared}
 		},
 	},
 	"P173": {
@@ -2576,7 +2490,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitRaw}
+			return ParameterValue{float32(v[0]), units.Raw}
 		},
 	},
 	"P174": {
@@ -2590,7 +2504,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitRaw}
+			return ParameterValue{float32(v[0]), units.Raw}
 		},
 	},
 	"P175": {
@@ -2604,7 +2518,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), UnitMilliamps}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.Milliamps}
 		},
 	},
 	"P176": {
@@ -2618,7 +2532,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 5, UnitKilometers}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 5, units.Kilometers}
 		},
 	},
 	"P177": {
@@ -2632,7 +2546,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 5, UnitKilometers}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 5, units.Kilometers}
 		},
 	},
 	"P178": {
@@ -2646,7 +2560,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitSteps}
+			return ParameterValue{float32(v[0]), units.Steps}
 		},
 	},
 	"P179": {
@@ -2660,7 +2574,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 100) * 10, UnitUS}
+			return ParameterValue{(float32(v[0]) - 100) * 10, units.US}
 		},
 	},
 	"P180": {
@@ -2674,7 +2588,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 100) * 10, UnitUS}
+			return ParameterValue{(float32(v[0]) - 100) * 10, units.US}
 		},
 	},
 	"P181": {
@@ -2688,7 +2602,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 100) * 10, UnitUS}
+			return ParameterValue{(float32(v[0]) - 100) * 10, units.US}
 		},
 	},
 	"P182": {
@@ -2702,7 +2616,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 100) * 10, UnitUS}
+			return ParameterValue{(float32(v[0]) - 100) * 10, units.US}
 		},
 	},
 	"P183": {
@@ -2716,7 +2630,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 128, UnitAmps}
+			return ParameterValue{float32(v[0]) - 128, units.Amps}
 		},
 	},
 	"P184": {
@@ -2730,7 +2644,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 40, UnitC}
+			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
 	},
 	"P185": {
@@ -2744,7 +2658,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitIndex}
+			return ParameterValue{float32(v[0]), units.Index}
 		},
 	},
 	"P186": {
@@ -2758,7 +2672,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitPercent}
+			return ParameterValue{float32(v[0]), units.Percent}
 		},
 	},
 	"P187": {
@@ -2772,7 +2686,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKPA}
+			return ParameterValue{float32(v[0]), units.KPA}
 		},
 	},
 	"P188": {
@@ -2786,7 +2700,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0])*5 - 40, UnitC}
+			return ParameterValue{float32(v[0])*5 - 40, units.C}
 		},
 	},
 	"P189": {
@@ -2800,7 +2714,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0])*5 - 40, UnitC}
+			return ParameterValue{float32(v[0])*5 - 40, units.C}
 		},
 	},
 	"P190": {
@@ -2814,7 +2728,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0])*5 - 40, UnitC}
+			return ParameterValue{float32(v[0])*5 - 40, units.C}
 		},
 	},
 	"P191": {
@@ -2828,7 +2742,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0])*5 - 40, UnitC}
+			return ParameterValue{float32(v[0])*5 - 40, units.C}
 		},
 	},
 	"P192": {
@@ -2842,7 +2756,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitPercent}
+			return ParameterValue{float32(v[0]), units.Percent}
 		},
 	},
 	"P193": {
@@ -2856,7 +2770,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitPercent}
+			return ParameterValue{float32(v[0]), units.Percent}
 		},
 	},
 	"P194": {
@@ -2870,7 +2784,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 128, UnitPercent}
+			return ParameterValue{float32(v[0]) / 128, units.Percent}
 		},
 	},
 	"P195": {
@@ -2884,7 +2798,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 143 / 255, UnitMPH}
+			return ParameterValue{float32(v[0]) * 143 / 255, units.MPH}
 		},
 	},
 	"P196": {
@@ -2898,7 +2812,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 143 / 255, UnitMPH}
+			return ParameterValue{float32(v[0]) * 143 / 255, units.MPH}
 		},
 	},
 	"P197": {
@@ -2912,7 +2826,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 40 / 13107, UnitPercent}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 40 / 13107, units.Percent}
 		},
 	},
 	"P198": {
@@ -2926,7 +2840,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitTime}
+			return ParameterValue{float32(v[0]), units.Time}
 		},
 	},
 	"P199": {
@@ -2940,7 +2854,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitTime}
+			return ParameterValue{float32(v[0]), units.Time}
 		},
 	},
 	"P204": {
@@ -2954,7 +2868,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitMPA}
+			return ParameterValue{float32(v[0]), units.MPA}
 		},
 	},
 	"P205": {
@@ -2968,7 +2882,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 62, UnitMiles}
+			return ParameterValue{float32(v[0]) * 62, units.Miles}
 		},
 	},
 	"P206": {
@@ -2982,7 +2896,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), UnitKilometers}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.Kilometers}
 		},
 	},
 	"P207": {
@@ -2996,7 +2910,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), UnitTimes}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.Times}
 		},
 	},
 	"P208": {
@@ -3010,7 +2924,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P209": {
@@ -3024,7 +2938,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P210": {
@@ -3038,7 +2952,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P211": {
@@ -3052,7 +2966,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P212": {
@@ -3066,7 +2980,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P213": {
@@ -3080,7 +2994,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P214": {
@@ -3094,7 +3008,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P215": {
@@ -3108,7 +3022,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P216": {
@@ -3122,7 +3036,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P217": {
@@ -3136,7 +3050,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P218": {
@@ -3150,7 +3064,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P219": {
@@ -3164,7 +3078,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P220": {
@@ -3178,7 +3092,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P221": {
@@ -3192,7 +3106,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P222": {
@@ -3206,7 +3120,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P223": {
@@ -3220,7 +3134,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P224": {
@@ -3234,7 +3148,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P225": {
@@ -3248,7 +3162,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P226": {
@@ -3262,7 +3176,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P227": {
@@ -3276,7 +3190,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) * 5, UnitUS}
+			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
 	},
 	"P228": {
@@ -3290,7 +3204,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) - 1000, UnitMilliamps}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) - 1000, units.Milliamps}
 		},
 	},
 	"P229": {
@@ -3304,7 +3218,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), UnitUS}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.US}
 		},
 	},
 	"P233": {
@@ -3318,7 +3232,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), UnitUS}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.US}
 		},
 	},
 	"P234": {
@@ -3332,7 +3246,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v))/256 - 30, UnitMM3PerStroke}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v))/256 - 30, units.MM3PerStroke}
 		},
 	},
 	"P235": {
@@ -3346,7 +3260,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 50, UnitDegreesCrankAngle}
+			return ParameterValue{float32(v[0]) / 50, units.DegreesCrankAngle}
 		},
 	},
 	"P236": {
@@ -3360,7 +3274,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) * 5, UnitGrams}
+			return ParameterValue{float32(v[0]) * 5, units.Grams}
 		},
 	},
 	"P238": {
@@ -3374,7 +3288,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) - 50, UnitNm}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) - 50, units.Nm}
 		},
 	},
 	"P239": {
@@ -3388,7 +3302,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{0 - float32(v[0]), UnitDegress}
+			return ParameterValue{0 - float32(v[0]), units.Degress}
 		},
 	},
 	"P240": {
@@ -3402,7 +3316,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0])*25 - 3200, UnitRPM}
+			return ParameterValue{float32(v[0])*25 - 3200, units.RPM}
 		},
 	},
 	"P241": {
@@ -3416,7 +3330,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0])*25 - 3200, UnitRPM}
+			return ParameterValue{float32(v[0])*25 - 3200, units.RPM}
 		},
 	},
 	"P244": {
@@ -3430,7 +3344,7 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), UnitKPA}
+			return ParameterValue{float32(v[0]), units.KPA}
 		},
 	},
 	"P245": {
@@ -3444,7 +3358,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 100, UnitGS}
+			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 100, units.GS}
 		},
 	},
 }
@@ -3456,7 +3370,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P200-Engine load as calculated from MAF and RPM.",
 		DependsOnParameters: []string{"P8", "P12"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P12"].Value) * 60) / (params["P8"].Value), UnitGramsPerRev}, nil
+			return &ParameterValue{((params["P12"].Value) * 60) / (params["P8"].Value), units.GramsPerRev}, nil
 		},
 	},
 	"P201": {
@@ -3465,7 +3379,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P201-IDC as calculated from RPM and injector PW.",
 		DependsOnParameters: []string{"P8", "P21"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P8"].Value) * (params["P21"].SafeConvertTo(UnitUS).Value)) / 1200, UnitPercent}, nil
+			return &ParameterValue{((params["P8"].Value) * (params["P21"].SafeConvertTo(units.US).Value)) / 1200, units.Percent}, nil
 		},
 	},
 	"P202": {
@@ -3474,7 +3388,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P202-Difference between Manifold Absolute Pressure and Atmospheric Pressure.",
 		DependsOnParameters: []string{"P7", "P24"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{(params["P7"].SafeConvertTo(UnitKPA).Value) - (params["P24"].SafeConvertTo(UnitKPA).Value), UnitPSI}, nil
+			return &ParameterValue{(params["P7"].SafeConvertTo(units.KPA).Value) - (params["P24"].SafeConvertTo(units.KPA).Value), units.PSI}, nil
 		},
 	},
 	"P203": {
@@ -3483,7 +3397,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P203-Estimated fuel consumption based on MAF, AFR and vehicle speed.",
 		DependsOnParameters: []string{"P9", "P12", "P58"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P9"].SafeConvertTo(UnitKMH).Value) / 3600) / (((params["P12"].Value) / (params["P58"].SafeConvertTo(UnitLambda).Value)) / 2880), UnitMPGUS}, nil
+			return &ParameterValue{((params["P9"].SafeConvertTo(units.KMH).Value) / 3600) / (((params["P12"].Value) / (params["P58"].SafeConvertTo(units.Lambda).Value)) / 2880), units.MPGUS}, nil
 		},
 	},
 	"P230": {
@@ -3492,7 +3406,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P230",
 		DependsOnParameters: []string{"P156", "P31"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{(params["P156"].Value) * (835 - (0.7 * ((params["P31"].SafeConvertTo(UnitC).Value) - 15))) / 1000, UnitMGPerCylinder}, nil
+			return &ParameterValue{(params["P156"].Value) * (835 - (0.7 * ((params["P31"].SafeConvertTo(units.C).Value) - 15))) / 1000, units.MGPerCylinder}, nil
 		},
 	},
 	"P231": {
@@ -3501,7 +3415,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P231",
 		DependsOnParameters: []string{"P229", "P8"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{(params["P229"].SafeConvertTo(UnitUS).Value) / (2777.77 / ((params["P8"].Value) / 60)), UnitDegreesCrankAngle}, nil
+			return &ParameterValue{(params["P229"].SafeConvertTo(units.US).Value) / (2777.77 / ((params["P8"].Value) / 60)), units.DegreesCrankAngle}, nil
 		},
 	},
 	"P232": {
@@ -3510,7 +3424,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P232",
 		DependsOnParameters: []string{"P160", "P230"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P160"].Value) / (params["P230"].Value)) / 14.7, UnitLambda}, nil
+			return &ParameterValue{((params["P160"].Value) / (params["P230"].Value)) / 14.7, units.Lambda}, nil
 		},
 	},
 	"P237": {
@@ -3519,7 +3433,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P237-Coefficient for determining the turbocharger efficiency",
 		DependsOnParameters: []string{"P160", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{(params["P160"].Value) / (params["P7"].SafeConvertTo(UnitKPA).Value), UnitCoefficient}, nil
+			return &ParameterValue{(params["P160"].Value) / (params["P7"].SafeConvertTo(units.KPA).Value), units.Coefficient}, nil
 		},
 	},
 	"P242": {
@@ -3528,7 +3442,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P242-VE calculated from IGL, MMA, MAF, IAT, absolute manifold pressure, assuming engine displacement of 122.04 CID (EJ207)",
 		DependsOnParameters: []string{"P200", "P11", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P200"].Value) * 2 * 8.314472 * ((params["P11"].SafeConvertTo(UnitC).Value) + 273.15)) / ((params["P7"].SafeConvertTo(UnitKPA).Value) * 2.0 * 28.97) * 100, UnitPercent}, nil
+			return &ParameterValue{((params["P200"].Value) * 2 * 8.314472 * ((params["P11"].SafeConvertTo(units.C).Value) + 273.15)) / ((params["P7"].SafeConvertTo(units.KPA).Value) * 2.0 * 28.97) * 100, units.Percent}, nil
 		},
 	},
 	"P243": {
@@ -3537,133 +3451,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Description:         "P243-VE calculated from IGL, MMA, MAF, IAT, absolute manifold pressure, assuming engine displacement of 149.9 CID (EJ257)",
 		DependsOnParameters: []string{"P200", "P11", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P200"].Value) * 2 * 8.314472 * ((params["P11"].SafeConvertTo(UnitC).Value) + 273.15)) / ((params["P7"].SafeConvertTo(UnitKPA).Value) * 2.5 * 28.97) * 100, UnitPercent}, nil
-		},
-	},
-}
-
-// UnitConversions provides conversion functions for the package-defined Units.
-var UnitConversions = map[Unit]map[Unit]func(v float32) float32{
-	UnitMPH: {
-		UnitKMH: func(v float32) float32 {
-			return v * 1.60934
-		},
-	},
-	UnitKMH: {
-		UnitMPH: func(v float32) float32 {
-			return v * 0.621371
-		},
-	},
-	UnitF: {
-		UnitC: func(v float32) float32 {
-			return (v - 32) / 9 * 5
-		},
-	},
-	UnitC: {
-		UnitF: func(v float32) float32 {
-			return (v / 5 * 9) + 32
-		},
-	},
-	UnitKPA: {
-		UnitPSI: func(v float32) float32 {
-			return v * 37 / 255
-		},
-		UnitBAR: func(v float32) float32 {
-			return v / 100
-		},
-		UnitHPA: func(v float32) float32 {
-			return v * 10
-		},
-		UnitInHG: func(v float32) float32 {
-			return v * 0.2953
-		},
-		UnitMmHG: func(v float32) float32 {
-			return v * 7.5
-		},
-	},
-	UnitPSI: {
-		UnitKPA: func(v float32) float32 {
-			return v * 255 / 37
-		},
-		UnitBAR: func(v float32) float32 {
-			return v * 0.0689475729
-		},
-		UnitHPA: func(v float32) float32 {
-			return v * 2550 / 37
-		},
-		UnitInHG: func(v float32) float32 {
-			return v * 2.03602
-		},
-		UnitMmHG: func(v float32) float32 {
-			return v * 51.7149
-		},
-	},
-	UnitBAR: {
-		UnitPSI: func(v float32) float32 {
-			return v * 14.5038
-		},
-		UnitKPA: func(v float32) float32 {
-			return v * 100
-		},
-		UnitHPA: func(v float32) float32 {
-			return v * 1000
-		},
-		UnitInHG: func(v float32) float32 {
-			return v * 29.53
-		},
-		UnitMmHG: func(v float32) float32 {
-			return v * 750.062
-		},
-	},
-	UnitHPA: {
-		UnitPSI: func(v float32) float32 {
-			return v * 0.0145038
-		},
-		UnitBAR: func(v float32) float32 {
-			return v / 1000
-		},
-		UnitKPA: func(v float32) float32 {
-			return v / 10
-		},
-		UnitInHG: func(v float32) float32 {
-			return v * 0.029529983071445
-		},
-		UnitMmHG: func(v float32) float32 {
-			return v * 0.75006157584566
-		},
-	},
-	UnitInHG: {
-		UnitPSI: func(v float32) float32 {
-			return v * 0.491154
-		},
-		UnitBAR: func(v float32) float32 {
-			return v * 0.0338639
-		},
-		UnitKPA: func(v float32) float32 {
-			return v * 3.3863886666667
-		},
-		UnitHPA: func(v float32) float32 {
-			return v * 33.863886666667
-		},
-		UnitMmHG: func(v float32) float32 {
-			return v * 25.4
-		},
-	},
-	UnitMmHG: {
-		UnitPSI: func(v float32) float32 {
-			return v * 0.0193368
-		},
-		UnitBAR: func(v float32) float32 {
-			return v * 0.00133322
-		},
-		UnitKPA: func(v float32) float32 {
-			return v * 0.13332239
-		},
-		UnitHPA: func(v float32) float32 {
-			return v * 1.3332239
-		},
-		UnitInHG: func(v float32) float32 {
-			return v * 0.0393701
+			return &ParameterValue{((params["P200"].Value) * 2 * 8.314472 * ((params["P11"].SafeConvertTo(units.C).Value) + 273.15)) / ((params["P7"].SafeConvertTo(units.KPA).Value) * 2.5 * 28.97) * 100, units.Percent}, nil
 		},
 	},
 }

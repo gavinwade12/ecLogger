@@ -35,34 +35,6 @@ func (p Packet) Data() []byte {
 	return p[PacketIndexPayloadStart : len(p)-1]
 }
 
-// InitResponse is the response packet from returned from an init request.
-type InitResponse Packet
-
-// SSM_ID returns the SSM ID from the ECU.
-func (r InitResponse) SSM_ID() []byte {
-	return r[PacketHeaderSize : PacketHeaderSize+3]
-}
-
-// ROM_ID returns the ROM ID form the ECU.
-func (r InitResponse) ROM_ID() []byte {
-	return r[PacketHeaderSize+3 : PacketHeaderSize+8]
-}
-
-// Capabilities holds a specific byte slice from the init response
-// that describes the parameters the ECU is capable of reporting.
-type Capabilities []byte
-
-// Capabilities returns the capability bytes from the init response.
-func (r InitResponse) Capabilities() Capabilities {
-	return Capabilities(r[PacketHeaderSize+8:])
-}
-
-// Contains returns true if the parameter is enabled in the capabilities.
-func (c Capabilities) Contains(p Parameter) bool {
-	return p.CapabilityByteIndex < uint(len(c)) &&
-		(c[p.CapabilityBitIndex]&(1<<p.CapabilityBitIndex)) > 0
-}
-
 func newPacket(src, dest byte, cmd byte, data []byte) Packet {
 	packet := make(Packet, PacketHeaderSize+len(data)+1)
 	packet[PacketIndexMagicByte] = PacketMagicByte
@@ -86,6 +58,18 @@ func calculateChecksum(p Packet) byte {
 		checksum += int(b)
 	}
 	return byte(checksum)
+}
+
+var devices = []byte{
+	DeviceEngine, DeviceTransmission, DeviceDiagnosticTool, DeviceFastModeDiagnosticTool,
+}
+
+var commands = []byte{
+	CommandReadBlockRequest, CommandReadBlockResponse,
+	CommandReadAddressesRequest, CommandReadAddressesResponse,
+	CommandWriteBlockRequest, CommandWriteBlockResponse,
+	CommandWriteAddressRequest, CommandWriteAddressResponse,
+	CommandInitRequest, CommandInitResponse,
 }
 
 func validateHeader(b []byte) error {

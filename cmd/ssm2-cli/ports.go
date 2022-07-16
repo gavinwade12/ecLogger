@@ -6,10 +6,10 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.bug.st/serial/enumerator"
 )
 
 func init() {
@@ -28,7 +28,7 @@ var listPortsCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List the available ports on the host",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ports, err := ssm2.AvailablePorts()
+		ports, err := availablePorts()
 		if err != nil {
 			return err
 		}
@@ -38,7 +38,7 @@ var listPortsCmd = &cobra.Command{
 	},
 }
 
-func listPorts(w io.Writer, ports []ssm2.SerialPort) {
+func listPorts(w io.Writer, ports []serialPort) {
 	for i, p := range ports {
 		fmt.Fprintf(w, "[%d]:\tPortName: '%s'\n\tProduct: %s\n\tVID/PID: %s/%s\n\tUSB: %v\n\tSelected: %v\n",
 			i, p.PortName, p.Product, p.VendorID, p.ProductID, p.IsUSB, p.PortName == port)
@@ -50,7 +50,7 @@ var selectPortCmd = &cobra.Command{
 	Short:        "Set the port to use in the config file",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ports, err := ssm2.AvailablePorts()
+		ports, err := availablePorts()
 		if err != nil {
 			return err
 		}
@@ -83,4 +83,33 @@ var selectPortCmd = &cobra.Command{
 
 		return viper.WriteConfig()
 	},
+}
+
+type serialPort struct {
+	PortName  string
+	Product   string
+	IsUSB     bool
+	VendorID  string
+	ProductID string
+}
+
+// availablePorts returns all available serial ports on the current host.
+func availablePorts() ([]serialPort, error) {
+	list, err := enumerator.GetDetailedPortsList()
+	if err != nil {
+		return nil, err
+	}
+
+	ports := make([]serialPort, len(list))
+	for i, p := range list {
+		ports[i] = serialPort{
+			PortName:  p.Name,
+			Product:   p.Product,
+			IsUSB:     p.IsUSB,
+			VendorID:  p.VID,
+			ProductID: p.PID,
+		}
+	}
+
+	return ports, nil
 }
