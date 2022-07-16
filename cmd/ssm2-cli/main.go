@@ -20,6 +20,7 @@ var configFile string
 var parameterFile string
 var port string
 var quiet bool
+var verbose bool
 
 func init() {
 	cobra.OnInitialize(func() {
@@ -28,9 +29,9 @@ func init() {
 	})
 
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "config file (default is $HOME/.ssm2.yaml)")
-	rootCmd.PersistentFlags().StringVar(&parameterFile, "parameters", "", "parameter file (default is $HOME/.ssm.parameters.json)")
-	rootCmd.PersistentFlags().StringVar(&port, portSettingName, "", "The serial port to connect to. Example: /dev/ttyUSB0")
-	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Quiet log output")
+	rootCmd.PersistentFlags().StringVar(&port, portSettingName, "", "serial port to connect to. Example: /dev/ttyUSB0")
+	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "quiet all log output")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "provide verbose output")
 }
 
 func main() {
@@ -43,18 +44,6 @@ var rootCmd = &cobra.Command{
 	Use:           "ssm2-cli",
 	Short:         "A CLI for interfacing with a Subaru ECU using the SSM2 protocol.",
 	SilenceErrors: true,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if parameterFile == "" {
-			home, err := homedir.Dir()
-			if err != nil {
-				return errors.Wrap(err, "finding home directory for parameter file")
-			}
-
-			parameterFile = path.Join(home, ".ssm2.parameters.json")
-		}
-
-		return nil
-	},
 }
 
 func initConfig() {
@@ -104,14 +93,14 @@ func presetRequiredFlags(cmd *cobra.Command) {
 }
 
 func ssm2Logger(cmd *cobra.Command) ssm2.Logger {
-	if quiet {
+	if !verbose {
 		return ssm2.NopLogger
 	}
 	return ssm2.DefaultLogger(cmd.OutOrStdout())
 }
 
 func createSSM2Conn(port string, l ssm2.Logger) (*ssm2.Connection, error) {
-	l.Debugf("opening serial connection to port %s", port)
+	l.Debugf("opening serial port %s", port)
 	sp, err := serial.Open(port, &serial.Mode{
 		BaudRate: ssm2.ConnectionBaudRate,
 		DataBits: ssm2.ConnectionDataBits,
@@ -123,7 +112,7 @@ func createSSM2Conn(port string, l ssm2.Logger) (*ssm2.Connection, error) {
 	}
 
 	if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
-		return nil, errors.Wrap(err, "setting connection read timeout")
+		return nil, errors.Wrap(err, "setting serial port read timeout")
 	}
 
 	return ssm2.NewConnection(sp, l), nil
