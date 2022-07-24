@@ -199,7 +199,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 4, units.RPM}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 4, units.RPM}
 		},
 	},
 	"P9": {
@@ -255,7 +255,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 100, units.GS}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 100, units.GS}
 		},
 	},
 	"P13": {
@@ -283,7 +283,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, units.Volts}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 200, units.Volts}
 		},
 	},
 	"P15": {
@@ -297,7 +297,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, units.Volts}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 200, units.Volts}
 		},
 	},
 	"P16": {
@@ -311,7 +311,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 200, units.Volts}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 200, units.Volts}
 		},
 	},
 	"P17": {
@@ -1767,7 +1767,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 2, units.Kilometers}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) * 2, units.Kilometers}
 		},
 	},
 	"P121": {
@@ -1781,7 +1781,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 10, units.BAR}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 10, units.BAR}
 		},
 	},
 	"P122": {
@@ -2271,7 +2271,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 256, units.MM3PerStroke}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 256, units.MM3PerStroke}
 		},
 	},
 	"P157": {
@@ -2425,7 +2425,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 4, units.RPM}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 4, units.RPM}
 		},
 	},
 	"P168": {
@@ -2467,7 +2467,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.Milliamps}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.Milliamps}
 		},
 	},
 	"P171": {
@@ -2537,7 +2537,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.Milliamps}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.Milliamps}
 		},
 	},
 	"P176": {
@@ -2551,7 +2551,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 5, units.Kilometers}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) * 5, units.Kilometers}
 		},
 	},
 	"P177": {
@@ -2565,7 +2565,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 5, units.Kilometers}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) * 5, units.Kilometers}
 		},
 	},
 	"P178": {
@@ -2845,7 +2845,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) * 40 / 13107, units.Percent}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) * 40 / 13107, units.Percent}
 		},
 	},
 	"P198": {
@@ -2915,7 +2915,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.Kilometers}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.Kilometers}
 		},
 	},
 	"P207": {
@@ -2929,7 +2929,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.Times}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.Times}
 		},
 	},
 	"P208": {
@@ -3223,7 +3223,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) - 1000, units.Milliamps}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) - 1000, units.Milliamps}
 		},
 	},
 	"P229": {
@@ -3237,7 +3237,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.US}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.US}
 		},
 	},
 	"P233": {
@@ -3251,7 +3251,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)), units.US}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.US}
 		},
 	},
 	"P234": {
@@ -3265,7 +3265,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v))/256 - 30, units.MM3PerStroke}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v))/256 - 30, units.MM3PerStroke}
 		},
 	},
 	"P235": {
@@ -3307,7 +3307,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) - 50, units.Nm}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) - 50, units.Nm}
 		},
 	},
 	"P239": {
@@ -3377,7 +3377,7 @@ var Parameters = map[string]Parameter{
 			Length:  2,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(binary.BigEndian.Uint32(v)) / 100, units.GS}
+			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 100, units.GS}
 		},
 	},
 }

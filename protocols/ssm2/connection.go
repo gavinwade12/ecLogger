@@ -128,7 +128,33 @@ func (c *Connection) NextPacket(ctx context.Context) (Packet, error) {
 		return nil, errors.Wrap(err, "reading packet header")
 	}
 	if err = validateHeader(header); err != nil {
-		return nil, errors.Wrap(err, "invalid packet header")
+		if header[0] == PacketMagicByte {
+			return nil, errors.Wrap(err, "invalid packet header")
+		}
+
+		// let's read until we find the magic byte - maybe we're getting data from a previous packet
+		var mbi *int
+		for i, b := range header {
+			if b == PacketMagicByte {
+				mbi = &i
+				break
+			}
+		}
+		// the magic byte isn't within this buffer, so restart
+		if mbi == nil {
+			return c.NextPacket(ctx)
+		}
+
+		// read the remaining header bytes and re-validate
+		rem := make([]byte, *mbi)
+		err := c.readInFull(ctx, rem)
+		if err != nil {
+			return nil, errors.Wrap(err, "reading packet header")
+		}
+		header = append(header[*mbi:], rem...)
+		if err = validateHeader(header); err != nil {
+			return nil, errors.Wrap(err, "invalid packet header")
+		}
 	}
 
 	payload := make([]byte, int(header[PacketIndexPayloadSize]))
@@ -139,7 +165,10 @@ func (c *Connection) NextPacket(ctx context.Context) (Packet, error) {
 	}
 
 	packet := Packet(append(header, payload...))
-	if calculateChecksum(packet) != packet[len(packet)-1] {
+	checksum := packet[len(packet)-1]
+	calculatedChecksum := calculateChecksum(packet)
+	if checksum != calculatedChecksum {
+		c.logger.Debugf("invalid checksum. want: %x. got: %x.\n", calculatedChecksum, checksum)
 		return nil, ErrInvalidChecksumByte
 	}
 	return packet, nil

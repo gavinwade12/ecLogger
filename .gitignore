@@ -1,2 +1,4 @@
 cmd/ssm2-cli/ssm2-cli
 cmd/ssm2-cli/ssm2-cli.exe
+cmd/logger-ui/logger-ui
+cmd/logger-ui/logger-ui.exe

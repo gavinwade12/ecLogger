@@ -96,8 +96,8 @@ var logCmd = &cobra.Command{
 		}
 
 		logFileFormat = strings.NewReplacer(
-			"romID", string(ecu.ROM_ID),
-			"timestamp", time.Now().Format("yyyyMMdd_hhmmss"),
+			"{{romID}}", string(ecu.ROM_ID),
+			"{{timestamp}}", time.Now().Format("20060102_150405"), //yyyyMMdd_hhmmss
 		).Replace(logFileFormat)
 		if !quiet {
 			fmt.Fprintf(stdOut, "logging to file: %s\n", logFileFormat)
@@ -178,10 +178,6 @@ var logCmd = &cobra.Command{
 				data := result.packet.Data()
 				index := 0
 				for i, param := range loggedParams {
-					if param.Address == nil {
-						continue
-					}
-
 					pv := param.Value(data[index : index+param.Address.Length])
 					val := strconv.FormatFloat(float64(pv.Value), 'f', 2, 32) + " " + string(pv.Unit)
 					if i < len(loggedParams)-1 {

@@ -114,6 +114,9 @@ func createSSM2Conn(port string, l ssm2.Logger) (*ssm2.Connection, error) {
 	if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
 		return nil, errors.Wrap(err, "setting serial port read timeout")
 	}
+	if err = sp.ResetInputBuffer(); err != nil {
+		return nil, errors.Wrap(err, "resetting input buffer")
+	}
 
 	return ssm2.NewConnection(sp, l), nil
 }
