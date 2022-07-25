@@ -2,15 +2,17 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gavinwade12/ssm2/protocols/ssm2"
+	"github.com/pkg/errors"
+	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
 )
 
@@ -26,7 +28,7 @@ func connectionContainer() fyne.CanvasObject {
 		widget.NewFormItem("Port", serialPortSelect),
 	)
 
-	loggingState.Set("Disconnected")
+	connectionState.Set("Disconnected")
 	connectBtn := widget.NewButton("Connect", nil)
 	cancelBtn := widget.NewButton("Cancel", nil)
 	connectBtn.OnTapped = func() {
@@ -45,18 +47,29 @@ func connectionContainer() fyne.CanvasObject {
 			serialPortSelect.Enable()
 			go querySerialPorts()
 			connectBtn.Enable()
-			loggingState.Set("Disconnected")
+			connectionState.Set("Disconnected")
 		}
 
 		// try connecting in another goroutine to prevent the UI from locking up
 		go func() {
-			err := openSSM2Connection(ctx)
+			err := openSSM2Connection()
+			if err != nil {
+				cancelBtn.Hide()
+				serialPortSelect.Enable()
+				go querySerialPorts()
+				connectBtn.Enable()
+				connectionState.Set("Disconnected")
+				logger.Debug(err.Error())
+				return
+			}
+
+			err = initSSM2Connection(ctx)
 			cancelBtn.Hide()
 			serialPortSelect.Enable()
 			if err != nil {
 				go querySerialPorts()
 				connectBtn.Enable()
-				loggingState.Set("Disconnected")
+				connectionState.Set("Disconnected")
 				logger.Debug(err.Error())
 			}
 			cancel()
@@ -68,26 +81,47 @@ func connectionContainer() fyne.CanvasObject {
 		form,
 		container.New(layout.NewHBoxLayout(),
 			widget.NewLabel("Status: "),
-			widget.NewLabelWithData(loggingState)),
+			widget.NewLabelWithData(connectionState)),
 		connectBtn,
 		cancelBtn)
 
 	return c
 }
 
-func openSSM2Connection(ctx context.Context) error {
+var openSSM2Connection = func() error {
 	if logger == nil {
 		logger = ssm2.DefaultLogger(os.Stdout)
 	}
 
-	loggingState.Set("Connecting...")
+	connectionState.Set("Connecting...")
 
-	sp, err := openSerialPort(config.SelectedPort)
+	if config.SelectedPort == "" {
+		return errors.New("a port is required")
+	}
+
+	logger.Debugf("opening serial port %s", config.SelectedPort)
+	sp, err := serial.Open(config.SelectedPort, &serial.Mode{
+		BaudRate: ssm2.ConnectionBaudRate,
+		DataBits: ssm2.ConnectionDataBits,
+		Parity:   serial.NoParity,
+		StopBits: serial.OneStopBit,
+	})
+	if err != nil {
+		return errors.Wrapf(err, "opening serial port '%s'", config.SelectedPort)
+	}
+
+	if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
+		return errors.Wrap(err, "setting serial port read timeout")
+	}
 	if err != nil {
 		return err
 	}
 
 	conn = ssm2.NewConnection(sp, logger)
+	return nil
+}
+
+func initSSM2Connection(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -99,7 +133,8 @@ func openSSM2Connection(ctx context.Context) error {
 				logger.Debug(err.Error())
 				continue
 			}
-			fmt.Println(resp.SSM_ID)
+			setAvailableParameters(resp)
+			connectionState.Set("Connected")
 			return nil
 		}
 	}
@@ -138,3 +173,8 @@ func querySerialPorts() {
 		}
 	}
 }
+
+var connectionState = binding.NewString()
+
+var logger ssm2.Logger
+var conn ssm2.Connection

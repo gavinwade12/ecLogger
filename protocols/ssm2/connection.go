@@ -13,7 +13,14 @@ import (
 
 // Connection provides high-level methods for communicating with an ECU
 // via the SSM2 protocol.
-type Connection struct {
+type Connection interface {
+	InitECU(ctx context.Context) (*ECU, error)
+	SendReadAddressesRequest(ctx context.Context, addresses [][3]byte, continous bool) (Packet, error)
+	NextPacket(ctx context.Context) (Packet, error)
+	Close() error
+}
+
+type connection struct {
 	serialPort io.ReadWriteCloser
 	logger     Logger
 }
@@ -35,18 +42,18 @@ const (
 var ErrReadTimeout = errors.New("the read operation timed out")
 
 // NewConnection returns a new Connection.
-func NewConnection(serialPort io.ReadWriteCloser, l Logger) *Connection {
+func NewConnection(serialPort io.ReadWriteCloser, l Logger) Connection {
 	if l == nil {
 		l = NopLogger
 	}
-	return &Connection{
+	return &connection{
 		serialPort: serialPort,
 		logger:     l,
 	}
 }
 
 // InitECU sends an init Command to the ECU and parses the response.
-func (c *Connection) InitECU(ctx context.Context) (*ECU, error) {
+func (c *connection) InitECU(ctx context.Context) (*ECU, error) {
 	p := newPacket(DeviceDiagnosticTool, DeviceEngine, CommandInitRequest, nil)
 	rp, err := c.sendPacket(ctx, p)
 	if err != nil {
@@ -63,7 +70,7 @@ func (c *Connection) InitECU(ctx context.Context) (*ECU, error) {
 // ReadAddressses sends a read addresses request to the ECU. The results should be fetched via NextPacket().
 // When continous is true, NextPacket() will continue to return results for the given addresses until the ECU
 // is interrupted.
-func (c *Connection) SendReadAddressesRequest(ctx context.Context, addresses [][3]byte, continous bool) (Packet, error) {
+func (c *connection) SendReadAddressesRequest(ctx context.Context, addresses [][3]byte, continous bool) (Packet, error) {
 	data := make([]byte, 1+len(addresses)*3)
 	if continous {
 		data[0] = 0x01
@@ -90,7 +97,7 @@ func (c *Connection) SendReadAddressesRequest(ctx context.Context, addresses [][
 	return rp, nil
 }
 
-func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
+func (c *connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 	logBytes(c.logger, p, "sending packet: ")
 
 	wb, err := c.serialPort.Write(p)
@@ -118,7 +125,7 @@ func (c *Connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 }
 
 // NextPacket reads the next packet from the ECU.
-func (c *Connection) NextPacket(ctx context.Context) (Packet, error) {
+func (c *connection) NextPacket(ctx context.Context) (Packet, error) {
 	c.logger.Debug("reading next packet")
 
 	header := make([]byte, PacketHeaderSize)
@@ -132,7 +139,7 @@ func (c *Connection) NextPacket(ctx context.Context) (Packet, error) {
 			return nil, errors.Wrap(err, "invalid packet header")
 		}
 
-		// let's read until we find the magic byte - maybe we're getting data from a previous packet
+		// let's try to find the next magic byte - maybe we're getting data from a previous packet
 		var mbi *int
 		for i, b := range header {
 			if b == PacketMagicByte {
@@ -166,7 +173,7 @@ func (c *Connection) NextPacket(ctx context.Context) (Packet, error) {
 
 	packet := Packet(append(header, payload...))
 	checksum := packet[len(packet)-1]
-	calculatedChecksum := calculateChecksum(packet)
+	calculatedChecksum := CalculateChecksum(packet)
 	if checksum != calculatedChecksum {
 		c.logger.Debugf("invalid checksum. want: %x. got: %x.\n", calculatedChecksum, checksum)
 		return nil, ErrInvalidChecksumByte
@@ -179,7 +186,7 @@ type readResult struct {
 	err   error
 }
 
-func (c *Connection) readInFull(ctx context.Context, b []byte) error {
+func (c *connection) readInFull(ctx context.Context, b []byte) error {
 	// start a goroutine to read the buffer in full
 	result := make(chan readResult, 1)
 	go func(ctx context.Context, result chan<- readResult, b []byte) {
@@ -215,7 +222,7 @@ func (c *Connection) readInFull(ctx context.Context, b []byte) error {
 	}
 }
 
-func (c *Connection) Close() error {
+func (c *connection) Close() error {
 	c.logger.Debug("closing connection")
 
 	if c.serialPort != nil {
@@ -225,7 +232,7 @@ func (c *Connection) Close() error {
 	return nil
 }
 
-func (c *Connection) waitForNBytesToTransfer(ctx context.Context, n int) error {
+func (c *connection) waitForNBytesToTransfer(ctx context.Context, n int) error {
 	ms := microsecondsOnTheWire(n)
 	c.logger.Debugf("waiting %s for %d bytes\n", ms, n)
 	select {

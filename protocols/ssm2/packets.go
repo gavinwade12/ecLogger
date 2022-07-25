@@ -76,12 +76,12 @@ func newPacket(src, dest byte, cmd byte, data []byte) Packet {
 		copy(packet[PacketIndexPayloadStart:len(packet)-1], data)
 	}
 
-	packet[len(packet)-1] = calculateChecksum(packet)
+	packet[len(packet)-1] = CalculateChecksum(packet)
 
 	return packet
 }
 
-func calculateChecksum(p Packet) byte {
+func CalculateChecksum(p Packet) byte {
 	checksum := 0
 	for _, b := range p[:len(p)-1] {
 		checksum += int(b)
@@ -127,8 +127,8 @@ type ECU struct {
 	SSM_ID []byte
 	ROM_ID []byte
 
-	SupportedParameters        map[string]*Parameter
-	SupportedDerivedParameters map[string]*DerivedParameter
+	SupportedParameters        []Parameter
+	SupportedDerivedParameters []DerivedParameter
 }
 
 func parseECUFromInitResponse(p Packet) *ECU {
@@ -136,9 +136,10 @@ func parseECUFromInitResponse(p Packet) *ECU {
 	dLen := uint(len(data))
 
 	ecu := &ECU{
-		SSM_ID:              data[:3],
-		ROM_ID:              data[3:8],
-		SupportedParameters: make(map[string]*Parameter),
+		SSM_ID:                     data[:3],
+		ROM_ID:                     data[3:8],
+		SupportedParameters:        make([]Parameter, 0),
+		SupportedDerivedParameters: make([]DerivedParameter, 0),
 	}
 
 	for _, p := range Parameters {
@@ -147,7 +148,7 @@ func parseECUFromInitResponse(p Packet) *ECU {
 		}
 
 		if (data[p.CapabilityByteIndex] & (1 << p.CapabilityBitIndex)) != 0 {
-			ecu.SupportedParameters[p.Id] = &p
+			ecu.SupportedParameters = append(ecu.SupportedParameters, p)
 		}
 	}
 

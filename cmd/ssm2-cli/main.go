@@ -99,7 +99,7 @@ func ssm2Logger(cmd *cobra.Command) ssm2.Logger {
 	return ssm2.DefaultLogger(cmd.OutOrStdout())
 }
 
-func createSSM2Conn(port string, l ssm2.Logger) (*ssm2.Connection, error) {
+func createSSM2Conn(port string, l ssm2.Logger) (ssm2.Connection, error) {
 	l.Debugf("opening serial port %s", port)
 	sp, err := serial.Open(port, &serial.Mode{
 		BaudRate: ssm2.ConnectionBaudRate,

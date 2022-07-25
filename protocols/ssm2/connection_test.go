@@ -245,26 +245,25 @@ func TestInitECU(t *testing.T) {
 		if len(ecu.SupportedParameters) != 5 {
 			t.Fatalf("expected 5 supported params (P8, P12, P239, P240, P241). got: %d (%v).", len(ecu.SupportedParameters), ecu.SupportedParameters)
 		}
-		if ecu.SupportedParameters["P8"] == nil {
-			t.Fatal("expected P8 param to be supported")
-		}
-		if ecu.SupportedParameters["P12"] == nil {
-			t.Fatal("expected P12 param to be supported")
-		}
-		if ecu.SupportedParameters["P239"] == nil {
-			t.Fatal("expected P239 param to be supported")
-		}
-		if ecu.SupportedParameters["P240"] == nil {
-			t.Fatal("expected P240 param to be supported")
-		}
-		if ecu.SupportedParameters["P241"] == nil {
-			t.Fatal("expected P241 param to be supported")
+
+		wants := []string{"P8", "P12", "P239", "P240", "P241"}
+		for _, want := range wants {
+			supported := false
+			for _, p := range ecu.SupportedParameters {
+				if p.Id == want {
+					supported = true
+					break
+				}
+			}
+			if !supported {
+				t.Fatalf("expected %s param to be supported", want)
+			}
 		}
 
 		if len(ecu.SupportedDerivedParameters) != 1 {
 			t.Fatalf("expected 1 supported derived param. got: %d.", len(ecu.SupportedDerivedParameters))
 		}
-		if ecu.SupportedDerivedParameters["P200"] == nil {
+		if ecu.SupportedDerivedParameters[0].Id != "P200" {
 			t.Fatal("expected P200 derived param to be supported")
 		}
 	})

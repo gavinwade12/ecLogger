@@ -11,6 +11,7 @@ type Parameter struct {
 	Id          string
 	Name        string
 	Description string
+	DefaultUnit units.Unit
 
 	// CapabilityByteIndex points to the capability byte containing the parameter's flag.
 	CapabilityByteIndex uint
@@ -28,6 +29,7 @@ type DerivedParameter struct {
 	Id          string
 	Name        string
 	Description string
+	DefaultUnit units.Unit
 
 	DependsOnParameters []string
 
@@ -69,19 +71,23 @@ func (v ParameterValue) SafeConvertTo(u units.Unit) ParameterValue {
 	return ParameterValue{Unit: u}
 }
 
-func AvailableDerivedParameters(params map[string]*Parameter) map[string]*DerivedParameter {
-	derived := make(map[string]*DerivedParameter)
+func AvailableDerivedParameters(params []Parameter) []DerivedParameter {
+	lookup := make(map[string]Parameter)
+	for _, p := range params {
+		lookup[p.Id] = p
+	}
 
+	derived := make([]DerivedParameter, 0)
 	for _, p := range DerivedParameters {
 		available := true
 		for _, d := range p.DependsOnParameters {
-			if params[d] == nil {
+			if _, ok := lookup[d]; !ok {
 				available = false
 				break
 			}
 		}
 		if available {
-			derived[p.Id] = &p
+			derived = append(derived, p)
 		}
 	}
 
@@ -103,6 +109,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P2": {
 		Id:                  "P2",
@@ -117,6 +124,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P3": {
 		Id:                  "P3",
@@ -131,6 +139,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P4": {
 		Id:                  "P4",
@@ -145,6 +154,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P5": {
 		Id:                  "P5",
@@ -159,6 +169,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P6": {
 		Id:                  "P6",
@@ -173,6 +184,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P7": {
 		Id:                  "P7",
@@ -187,6 +199,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P8": {
 		Id:                  "P8",
@@ -201,6 +214,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 4, units.RPM}
 		},
+		DefaultUnit: units.RPM,
 	},
 	"P9": {
 		Id:                  "P9",
@@ -215,6 +229,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KMH}
 		},
+		DefaultUnit: units.KMH,
 	},
 	"P10": {
 		Id:                  "P10",
@@ -229,6 +244,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P11": {
 		Id:                  "P11",
@@ -243,6 +259,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P12": {
 		Id:                  "P12",
@@ -257,6 +274,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 100, units.GS}
 		},
+		DefaultUnit: units.GS,
 	},
 	"P13": {
 		Id:                  "P13",
@@ -271,6 +289,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P14": {
 		Id:                  "P14",
@@ -285,6 +304,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 200, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P15": {
 		Id:                  "P15",
@@ -299,6 +319,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 200, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P16": {
 		Id:                  "P16",
@@ -313,6 +334,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 200, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P17": {
 		Id:                  "P17",
@@ -327,6 +349,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 8 / 100, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P18": {
 		Id:                  "P18",
@@ -341,6 +364,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P19": {
 		Id:                  "P19",
@@ -355,6 +379,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P20": {
 		Id:                  "P20",
@@ -369,6 +394,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P21": {
 		Id:                  "P21",
@@ -383,6 +409,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 256, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P22": {
 		Id:                  "P22",
@@ -397,6 +424,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 256, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P23": {
 		Id:                  "P23",
@@ -411,6 +439,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P24": {
 		Id:                  "P24",
@@ -425,6 +454,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P25": {
 		Id:                  "P25",
@@ -439,6 +469,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 128, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P26": {
 		Id:                  "P26",
@@ -453,6 +484,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 128, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P27": {
 		Id:                  "P27",
@@ -467,6 +499,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) / 4, units.HPA}
 		},
+		DefaultUnit: units.HPA,
 	},
 	"P28": {
 		Id:                  "P28",
@@ -481,6 +514,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P29": {
 		Id:                  "P29",
@@ -495,6 +529,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P30": {
 		Id:                  "P30",
@@ -509,6 +544,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P31": {
 		Id:                  "P31",
@@ -523,6 +559,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P32": {
 		Id:                  "P32",
@@ -537,6 +574,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 1004 / 25600, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P33": {
 		Id:                  "P33",
@@ -551,6 +589,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 1004 / 25600, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P34": {
 		Id:                  "P34",
@@ -565,6 +604,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 1004 / 25600, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P35": {
 		Id:                  "P35",
@@ -579,6 +619,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P36": {
 		Id:                  "P36",
@@ -593,6 +634,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P37": {
 		Id:                  "P37",
@@ -607,6 +649,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P38": {
 		Id:                  "P38",
@@ -621,6 +664,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P39": {
 		Id:                  "P39",
@@ -635,6 +679,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P40": {
 		Id:                  "P40",
@@ -649,6 +694,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P41": {
 		Id:                  "P41",
@@ -663,6 +709,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P42": {
 		Id:                  "P42",
@@ -677,6 +724,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P43": {
 		Id:                  "P43",
@@ -691,6 +739,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P44": {
 		Id:                  "P44",
@@ -705,6 +754,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Steps}
 		},
+		DefaultUnit: units.Steps,
 	},
 	"P45": {
 		Id:                  "P45",
@@ -719,6 +769,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Steps}
 		},
+		DefaultUnit: units.Steps,
 	},
 	"P46": {
 		Id:                  "P46",
@@ -733,6 +784,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P47": {
 		Id:                  "P47",
@@ -747,6 +799,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P48": {
 		Id:                  "P48",
@@ -761,6 +814,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P49": {
 		Id:                  "P49",
@@ -775,6 +829,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P50": {
 		Id:                  "P50",
@@ -789,6 +844,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P51": {
 		Id:                  "P51",
@@ -803,6 +859,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P52": {
 		Id:                  "P52",
@@ -817,6 +874,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P53": {
 		Id:                  "P53",
@@ -831,6 +889,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P54": {
 		Id:                  "P54",
@@ -845,6 +904,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) / 8, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P55": {
 		Id:                  "P55",
@@ -859,6 +919,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) / 8, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P56": {
 		Id:                  "P56",
@@ -873,6 +934,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Ohms}
 		},
+		DefaultUnit: units.Ohms,
 	},
 	"P57": {
 		Id:                  "P57",
@@ -887,6 +949,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Ohms}
 		},
+		DefaultUnit: units.Ohms,
 	},
 	"P58": {
 		Id:                  "P58",
@@ -901,6 +964,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 128, units.Lambda}
 		},
+		DefaultUnit: units.Lambda,
 	},
 	"P59": {
 		Id:                  "P59",
@@ -915,6 +979,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 128, units.Lambda}
 		},
+		DefaultUnit: units.Lambda,
 	},
 	"P60": {
 		Id:                  "P60",
@@ -929,6 +994,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) + 1, units.Gear}
 		},
+		DefaultUnit: units.Gear,
 	},
 	"P61": {
 		Id:                  "P61",
@@ -943,6 +1009,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 10, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P62": {
 		Id:                  "P62",
@@ -957,6 +1024,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 10, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P63": {
 		Id:                  "P63",
@@ -971,6 +1039,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
+		DefaultUnit: units.MisfireCount,
 	},
 	"P64": {
 		Id:                  "P64",
@@ -985,6 +1054,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
+		DefaultUnit: units.MisfireCount,
 	},
 	"P65": {
 		Id:                  "P65",
@@ -999,6 +1069,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P66": {
 		Id:                  "P66",
@@ -1013,6 +1084,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P67": {
 		Id:                  "P67",
@@ -1027,6 +1099,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P68": {
 		Id:                  "P68",
@@ -1041,6 +1114,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P69": {
 		Id:                  "P69",
@@ -1055,6 +1129,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
+		DefaultUnit: units.MisfireCount,
 	},
 	"P70": {
 		Id:                  "P70",
@@ -1069,6 +1144,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
+		DefaultUnit: units.MisfireCount,
 	},
 	"P71": {
 		Id:                  "P71",
@@ -1083,6 +1159,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 100 / 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P72": {
 		Id:                  "P72",
@@ -1097,6 +1174,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 8 / 100, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P73": {
 		Id:                  "P73",
@@ -1111,6 +1189,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P74": {
 		Id:                  "P74",
@@ -1125,6 +1204,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P75": {
 		Id:                  "P75",
@@ -1139,6 +1219,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P76": {
 		Id:                  "P76",
@@ -1153,6 +1234,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P77": {
 		Id:                  "P77",
@@ -1167,6 +1249,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P78": {
 		Id:                  "P78",
@@ -1181,6 +1264,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 25, units.MPA}
 		},
+		DefaultUnit: units.MPA,
 	},
 	"P79": {
 		Id:                  "P79",
@@ -1195,6 +1279,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) + 40) * 5, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P80": {
 		Id:                  "P80",
@@ -1209,6 +1294,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 256, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P81": {
 		Id:                  "P81",
@@ -1223,6 +1309,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Steps}
 		},
+		DefaultUnit: units.Steps,
 	},
 	"P82": {
 		Id:                  "P82",
@@ -1237,6 +1324,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KMH}
 		},
+		DefaultUnit: units.KMH,
 	},
 	"P83": {
 		Id:                  "P83",
@@ -1251,6 +1339,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P84": {
 		Id:                  "P84",
@@ -1265,6 +1354,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P85": {
 		Id:                  "P85",
@@ -1279,6 +1369,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P86": {
 		Id:                  "P86",
@@ -1293,6 +1384,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 100 / 255, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P87": {
 		Id:                  "P87",
@@ -1307,6 +1399,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P88": {
 		Id:                  "P88",
@@ -1321,6 +1414,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P89": {
 		Id:                  "P89",
@@ -1335,6 +1429,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) * .078125) - 5, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P90": {
 		Id:                  "P90",
@@ -1349,6 +1444,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 16, units.Multiplier}
 		},
+		DefaultUnit: units.Multiplier,
 	},
 	"P91": {
 		Id:                  "P91",
@@ -1363,6 +1459,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) * 0.25) - 32, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P92": {
 		Id:                  "P92",
@@ -1377,6 +1474,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P93": {
 		Id:                  "P93",
@@ -1391,6 +1489,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KMH}
 		},
+		DefaultUnit: units.KMH,
 	},
 	"P94": {
 		Id:                  "P94",
@@ -1405,6 +1504,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Index}
 		},
+		DefaultUnit: units.Index,
 	},
 	"P95": {
 		Id:                  "P95",
@@ -1419,6 +1519,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P96": {
 		Id:                  "P96",
@@ -1433,6 +1534,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P97": {
 		Id:                  "P97",
@@ -1447,6 +1549,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P98": {
 		Id:                  "P98",
@@ -1461,6 +1564,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 45, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P99": {
 		Id:                  "P99",
@@ -1475,6 +1579,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.RPM}
 		},
+		DefaultUnit: units.RPM,
 	},
 	"P100": {
 		Id:                  "P100",
@@ -1489,6 +1594,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P101": {
 		Id:                  "P101",
@@ -1503,6 +1609,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KMH}
 		},
+		DefaultUnit: units.KMH,
 	},
 	"P102": {
 		Id:                  "P102",
@@ -1517,6 +1624,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P103": {
 		Id:                  "P103",
@@ -1531,6 +1639,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P104": {
 		Id:                  "P104",
@@ -1545,6 +1654,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 50, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P105": {
 		Id:                  "P105",
@@ -1559,6 +1669,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P106": {
 		Id:                  "P106",
@@ -1573,6 +1684,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P107": {
 		Id:                  "P107",
@@ -1587,6 +1699,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 2, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P108": {
 		Id:                  "P108",
@@ -1601,6 +1714,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 50, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P109": {
 		Id:                  "P109",
@@ -1615,6 +1729,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 51, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P110": {
 		Id:                  "P110",
@@ -1629,6 +1744,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.RPM}
 		},
+		DefaultUnit: units.RPM,
 	},
 	"P111": {
 		Id:                  "P111",
@@ -1643,6 +1759,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.RPM}
 		},
+		DefaultUnit: units.RPM,
 	},
 	"P112": {
 		Id:                  "P112",
@@ -1657,6 +1774,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 32, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P113": {
 		Id:                  "P113",
@@ -1671,6 +1789,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 32, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P114": {
 		Id:                  "P114",
@@ -1685,6 +1804,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Index}
 		},
+		DefaultUnit: units.Index,
 	},
 	"P115": {
 		Id:                  "P115",
@@ -1699,6 +1819,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P116": {
 		Id:                  "P116",
@@ -1713,6 +1834,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0])*5 + 200, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P117": {
 		Id:                  "P117",
@@ -1727,6 +1849,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 64) / 128 * 10, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P118": {
 		Id:                  "P118",
@@ -1741,6 +1864,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) / 128 * 100, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P119": {
 		Id:                  "P119",
@@ -1755,6 +1879,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 4 / 2, units.Ohms}
 		},
+		DefaultUnit: units.Ohms,
 	},
 	"P120": {
 		Id:                  "P120",
@@ -1769,6 +1894,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) * 2, units.Kilometers}
 		},
+		DefaultUnit: units.Kilometers,
 	},
 	"P121": {
 		Id:                  "P121",
@@ -1783,6 +1909,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 10, units.BAR}
 		},
+		DefaultUnit: units.BAR,
 	},
 	"P122": {
 		Id:                  "P122",
@@ -1797,6 +1924,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P123": {
 		Id:                  "P123",
@@ -1811,6 +1939,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255 * 100, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P124": {
 		Id:                  "P124",
@@ -1825,6 +1954,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255 * 100, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P125": {
 		Id:                  "P125",
@@ -1839,6 +1969,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P126": {
 		Id:                  "P126",
@@ -1853,6 +1984,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 32, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P127": {
 		Id:                  "P127",
@@ -1867,6 +1999,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Raw}
 		},
+		DefaultUnit: units.Raw,
 	},
 	"P128": {
 		Id:                  "P128",
@@ -1881,6 +2014,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P129": {
 		Id:                  "P129",
@@ -1895,6 +2029,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P130": {
 		Id:                  "P130",
@@ -1909,6 +2044,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P131": {
 		Id:                  "P131",
@@ -1923,6 +2059,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P132": {
 		Id:                  "P132",
@@ -1937,6 +2074,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P133": {
 		Id:                  "P133",
@@ -1951,6 +2089,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P134": {
 		Id:                  "P134",
@@ -1965,6 +2104,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P135": {
 		Id:                  "P135",
@@ -1979,6 +2119,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 51, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P136": {
 		Id:                  "P136",
@@ -1993,6 +2134,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P137": {
 		Id:                  "P137",
@@ -2007,6 +2149,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P138": {
 		Id:                  "P138",
@@ -2021,6 +2164,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P139": {
 		Id:                  "P139",
@@ -2035,6 +2179,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P140": {
 		Id:                  "P140",
@@ -2049,6 +2194,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P141": {
 		Id:                  "P141",
@@ -2063,6 +2209,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P142": {
 		Id:                  "P142",
@@ -2077,6 +2224,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P143": {
 		Id:                  "P143",
@@ -2091,6 +2239,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 51, units.Volts}
 		},
+		DefaultUnit: units.Volts,
 	},
 	"P144": {
 		Id:                  "P144",
@@ -2105,6 +2254,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KMH}
 		},
+		DefaultUnit: units.KMH,
 	},
 	"P145": {
 		Id:                  "P145",
@@ -2119,6 +2269,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KMH}
 		},
+		DefaultUnit: units.KMH,
 	},
 	"P146": {
 		Id:                  "P146",
@@ -2133,6 +2284,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KMH}
 		},
+		DefaultUnit: units.KMH,
 	},
 	"P147": {
 		Id:                  "P147",
@@ -2147,6 +2299,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KMH}
 		},
+		DefaultUnit: units.KMH,
 	},
 	"P148": {
 		Id:                  "P148",
@@ -2161,6 +2314,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P149": {
 		Id:                  "P149",
@@ -2175,6 +2329,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 255, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P150": {
 		Id:                  "P150",
@@ -2189,6 +2344,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P151": {
 		Id:                  "P151",
@@ -2203,6 +2359,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
+		DefaultUnit: units.MisfireCount,
 	},
 	"P152": {
 		Id:                  "P152",
@@ -2217,6 +2374,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MisfireCount}
 		},
+		DefaultUnit: units.MisfireCount,
 	},
 	"P153": {
 		Id:                  "P153",
@@ -2231,6 +2389,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 16, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P154": {
 		Id:                  "P154",
@@ -2245,6 +2404,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) / 2, units.HPA}
 		},
+		DefaultUnit: units.HPA,
 	},
 	"P155": {
 		Id:                  "P155",
@@ -2259,6 +2419,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0])/5 - 15, units.DegreesCrankAngle}
 		},
+		DefaultUnit: units.DegreesCrankAngle,
 	},
 	"P156": {
 		Id:                  "P156",
@@ -2273,6 +2434,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 256, units.MM3PerStroke}
 		},
+		DefaultUnit: units.MM3PerStroke,
 	},
 	"P157": {
 		Id:                  "P157",
@@ -2287,6 +2449,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Count}
 		},
+		DefaultUnit: units.Count,
 	},
 	"P158": {
 		Id:                  "P158",
@@ -2301,6 +2464,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P159": {
 		Id:                  "P159",
@@ -2315,6 +2479,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.MGPerCylinder}
 		},
+		DefaultUnit: units.MGPerCylinder,
 	},
 	"P160": {
 		Id:                  "P160",
@@ -2329,6 +2494,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 10, units.MGPerCylinder}
 		},
+		DefaultUnit: units.MGPerCylinder,
 	},
 	"P161": {
 		Id:                  "P161",
@@ -2343,6 +2509,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P162": {
 		Id:                  "P162",
@@ -2357,6 +2524,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 50, units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P163": {
 		Id:                  "P163",
@@ -2371,6 +2539,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P164": {
 		Id:                  "P164",
@@ -2385,6 +2554,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MPA}
 		},
+		DefaultUnit: units.MPA,
 	},
 	"P165": {
 		Id:                  "P165",
@@ -2399,6 +2569,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MPA}
 		},
+		DefaultUnit: units.MPA,
 	},
 	"P166": {
 		Id:                  "P166",
@@ -2413,6 +2584,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P167": {
 		Id:                  "P167",
@@ -2427,6 +2599,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 4, units.RPM}
 		},
+		DefaultUnit: units.RPM,
 	},
 	"P168": {
 		Id:                  "P168",
@@ -2441,6 +2614,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P169": {
 		Id:                  "P169",
@@ -2455,6 +2629,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P170": {
 		Id:                  "P170",
@@ -2469,6 +2644,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P171": {
 		Id:                  "P171",
@@ -2483,6 +2659,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 0.19118, units.DegreesPerSecond}
 		},
+		DefaultUnit: units.DegreesPerSecond,
 	},
 	"P172": {
 		Id:                  "P172",
@@ -2497,6 +2674,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 1.0862, units.MetersPerSecondSquared}
 		},
+		DefaultUnit: units.MetersPerSecondSquared,
 	},
 	"P173": {
 		Id:                  "P173",
@@ -2511,6 +2689,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Raw}
 		},
+		DefaultUnit: units.Raw,
 	},
 	"P174": {
 		Id:                  "P174",
@@ -2525,6 +2704,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Raw}
 		},
+		DefaultUnit: units.Raw,
 	},
 	"P175": {
 		Id:                  "P175",
@@ -2539,6 +2719,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P176": {
 		Id:                  "P176",
@@ -2553,6 +2734,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) * 5, units.Kilometers}
 		},
+		DefaultUnit: units.Kilometers,
 	},
 	"P177": {
 		Id:                  "P177",
@@ -2567,6 +2749,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) * 5, units.Kilometers}
 		},
+		DefaultUnit: units.Kilometers,
 	},
 	"P178": {
 		Id:                  "P178",
@@ -2581,6 +2764,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Steps}
 		},
+		DefaultUnit: units.Steps,
 	},
 	"P179": {
 		Id:                  "P179",
@@ -2595,6 +2779,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 100) * 10, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P180": {
 		Id:                  "P180",
@@ -2609,6 +2794,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 100) * 10, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P181": {
 		Id:                  "P181",
@@ -2623,6 +2809,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 100) * 10, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P182": {
 		Id:                  "P182",
@@ -2637,6 +2824,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 100) * 10, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P183": {
 		Id:                  "P183",
@@ -2651,6 +2839,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 128, units.Amps}
 		},
+		DefaultUnit: units.Amps,
 	},
 	"P184": {
 		Id:                  "P184",
@@ -2665,6 +2854,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P185": {
 		Id:                  "P185",
@@ -2679,6 +2869,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Index}
 		},
+		DefaultUnit: units.Index,
 	},
 	"P186": {
 		Id:                  "P186",
@@ -2693,6 +2884,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P187": {
 		Id:                  "P187",
@@ -2707,6 +2899,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P188": {
 		Id:                  "P188",
@@ -2721,6 +2914,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0])*5 - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P189": {
 		Id:                  "P189",
@@ -2735,6 +2929,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0])*5 - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P190": {
 		Id:                  "P190",
@@ -2749,6 +2944,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0])*5 - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P191": {
 		Id:                  "P191",
@@ -2763,6 +2959,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0])*5 - 40, units.C}
 		},
+		DefaultUnit: units.C,
 	},
 	"P192": {
 		Id:                  "P192",
@@ -2777,6 +2974,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P193": {
 		Id:                  "P193",
@@ -2791,6 +2989,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P194": {
 		Id:                  "P194",
@@ -2805,6 +3004,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 128, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P195": {
 		Id:                  "P195",
@@ -2819,6 +3019,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 143 / 255, units.MPH}
 		},
+		DefaultUnit: units.MPH,
 	},
 	"P196": {
 		Id:                  "P196",
@@ -2833,6 +3034,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 143 / 255, units.MPH}
 		},
+		DefaultUnit: units.MPH,
 	},
 	"P197": {
 		Id:                  "P197",
@@ -2847,6 +3049,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) * 40 / 13107, units.Percent}
 		},
+		DefaultUnit: units.Percent,
 	},
 	"P198": {
 		Id:                  "P198",
@@ -2861,6 +3064,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Time}
 		},
+		DefaultUnit: units.Time,
 	},
 	"P199": {
 		Id:                  "P199",
@@ -2875,6 +3079,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.Time}
 		},
+		DefaultUnit: units.Time,
 	},
 	"P204": {
 		Id:                  "P204",
@@ -2889,6 +3094,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.MPA}
 		},
+		DefaultUnit: units.MPA,
 	},
 	"P205": {
 		Id:                  "P205",
@@ -2903,6 +3109,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 62, units.Miles}
 		},
+		DefaultUnit: units.Miles,
 	},
 	"P206": {
 		Id:                  "P206",
@@ -2917,6 +3124,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.Kilometers}
 		},
+		DefaultUnit: units.Kilometers,
 	},
 	"P207": {
 		Id:                  "P207",
@@ -2931,6 +3139,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.Times}
 		},
+		DefaultUnit: units.Times,
 	},
 	"P208": {
 		Id:                  "P208",
@@ -2945,6 +3154,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P209": {
 		Id:                  "P209",
@@ -2959,6 +3169,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P210": {
 		Id:                  "P210",
@@ -2973,6 +3184,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P211": {
 		Id:                  "P211",
@@ -2987,6 +3199,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P212": {
 		Id:                  "P212",
@@ -3001,6 +3214,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P213": {
 		Id:                  "P213",
@@ -3015,6 +3229,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P214": {
 		Id:                  "P214",
@@ -3029,6 +3244,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P215": {
 		Id:                  "P215",
@@ -3043,6 +3259,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P216": {
 		Id:                  "P216",
@@ -3057,6 +3274,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P217": {
 		Id:                  "P217",
@@ -3071,6 +3289,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P218": {
 		Id:                  "P218",
@@ -3085,6 +3304,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P219": {
 		Id:                  "P219",
@@ -3099,6 +3319,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P220": {
 		Id:                  "P220",
@@ -3113,6 +3334,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P221": {
 		Id:                  "P221",
@@ -3127,6 +3349,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P222": {
 		Id:                  "P222",
@@ -3141,6 +3364,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P223": {
 		Id:                  "P223",
@@ -3155,6 +3379,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P224": {
 		Id:                  "P224",
@@ -3169,6 +3394,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P225": {
 		Id:                  "P225",
@@ -3183,6 +3409,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P226": {
 		Id:                  "P226",
@@ -3197,6 +3424,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P227": {
 		Id:                  "P227",
@@ -3211,6 +3439,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{(float32(v[0]) - 128) * 5, units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P228": {
 		Id:                  "P228",
@@ -3225,6 +3454,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) - 1000, units.Milliamps}
 		},
+		DefaultUnit: units.Milliamps,
 	},
 	"P229": {
 		Id:                  "P229",
@@ -3239,6 +3469,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P233": {
 		Id:                  "P233",
@@ -3253,6 +3484,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)), units.US}
 		},
+		DefaultUnit: units.US,
 	},
 	"P234": {
 		Id:                  "P234",
@@ -3267,6 +3499,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v))/256 - 30, units.MM3PerStroke}
 		},
+		DefaultUnit: units.MM3PerStroke,
 	},
 	"P235": {
 		Id:                  "P235",
@@ -3281,6 +3514,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) / 50, units.DegreesCrankAngle}
 		},
+		DefaultUnit: units.DegreesCrankAngle,
 	},
 	"P236": {
 		Id:                  "P236",
@@ -3295,6 +3529,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]) * 5, units.Grams}
 		},
+		DefaultUnit: units.Grams,
 	},
 	"P238": {
 		Id:                  "P238",
@@ -3309,6 +3544,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) - 50, units.Nm}
 		},
+		DefaultUnit: units.Nm,
 	},
 	"P239": {
 		Id:                  "P239",
@@ -3323,6 +3559,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{0 - float32(v[0]), units.Degress}
 		},
+		DefaultUnit: units.Degress,
 	},
 	"P240": {
 		Id:                  "P240",
@@ -3337,6 +3574,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0])*25 - 3200, units.RPM}
 		},
+		DefaultUnit: units.RPM,
 	},
 	"P241": {
 		Id:                  "P241",
@@ -3351,6 +3589,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0])*25 - 3200, units.RPM}
 		},
+		DefaultUnit: units.RPM,
 	},
 	"P244": {
 		Id:                  "P244",
@@ -3365,6 +3604,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(v[0]), units.KPA}
 		},
+		DefaultUnit: units.KPA,
 	},
 	"P245": {
 		Id:                  "P245",
@@ -3379,6 +3619,7 @@ var Parameters = map[string]Parameter{
 		Value: func(v []byte) ParameterValue {
 			return ParameterValue{float32(binary.BigEndian.Uint16(v)) / 100, units.GS}
 		},
+		DefaultUnit: units.GS,
 	},
 }
 
@@ -3387,6 +3628,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P200",
 		Name:                "Engine Load (Calculated)",
 		Description:         "P200-Engine load as calculated from MAF and RPM.",
+		DefaultUnit:         units.GramsPerRev,
 		DependsOnParameters: []string{"P8", "P12"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{((params["P12"].Value) * 60) / (params["P8"].Value), units.GramsPerRev}, nil
@@ -3396,6 +3638,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P201",
 		Name:                "Injector Duty Cycle",
 		Description:         "P201-IDC as calculated from RPM and injector PW.",
+		DefaultUnit:         units.Percent,
 		DependsOnParameters: []string{"P8", "P21"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{((params["P8"].Value) * (params["P21"].SafeConvertTo(units.US).Value)) / 1200, units.Percent}, nil
@@ -3405,6 +3648,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P202",
 		Name:                "Manifold Relative Pressure (Corrected)",
 		Description:         "P202-Difference between Manifold Absolute Pressure and Atmospheric Pressure.",
+		DefaultUnit:         units.PSI,
 		DependsOnParameters: []string{"P7", "P24"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{(params["P7"].SafeConvertTo(units.KPA).Value) - (params["P24"].SafeConvertTo(units.KPA).Value), units.PSI}, nil
@@ -3414,6 +3658,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P203",
 		Name:                "Fuel Consumption (Est.)",
 		Description:         "P203-Estimated fuel consumption based on MAF, AFR and vehicle speed.",
+		DefaultUnit:         units.MPGUS,
 		DependsOnParameters: []string{"P9", "P12", "P58"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{((params["P9"].SafeConvertTo(units.KMH).Value) / 3600) / (((params["P12"].Value) / (params["P58"].SafeConvertTo(units.Lambda).Value)) / 2880), units.MPGUS}, nil
@@ -3423,6 +3668,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P230",
 		Name:                "Final Injection Amount (Fuel Temperature Corrected)",
 		Description:         "P230",
+		DefaultUnit:         units.MGPerCylinder,
 		DependsOnParameters: []string{"P156", "P31"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{(params["P156"].Value) * (835 - (0.7 * ((params["P31"].SafeConvertTo(units.C).Value) - 15))) / 1000, units.MGPerCylinder}, nil
@@ -3432,6 +3678,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P231",
 		Name:                "Angle of Main Injection",
 		Description:         "P231",
+		DefaultUnit:         units.DegreesCrankAngle,
 		DependsOnParameters: []string{"P229", "P8"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{(params["P229"].SafeConvertTo(units.US).Value) / (2777.77 / ((params["P8"].Value) / 60)), units.DegreesCrankAngle}, nil
@@ -3441,6 +3688,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P232",
 		Name:                "Lambda (Smoke Behaviour)",
 		Description:         "P232",
+		DefaultUnit:         units.Lambda,
 		DependsOnParameters: []string{"P160", "P230"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{((params["P160"].Value) / (params["P230"].Value)) / 14.7, units.Lambda}, nil
@@ -3450,6 +3698,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P237",
 		Name:                "Air mass/charge pressure coefficient (TD)",
 		Description:         "P237-Coefficient for determining the turbocharger efficiency",
+		DefaultUnit:         units.Coefficient,
 		DependsOnParameters: []string{"P160", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{(params["P160"].Value) / (params["P7"].SafeConvertTo(units.KPA).Value), units.Coefficient}, nil
@@ -3459,6 +3708,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P242",
 		Name:                "Volumetric Efficiency 2.0L (Calculated)",
 		Description:         "P242-VE calculated from IGL, MMA, MAF, IAT, absolute manifold pressure, assuming engine displacement of 122.04 CID (EJ207)",
+		DefaultUnit:         units.Percent,
 		DependsOnParameters: []string{"P200", "P11", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{((params["P200"].Value) * 2 * 8.314472 * ((params["P11"].SafeConvertTo(units.C).Value) + 273.15)) / ((params["P7"].SafeConvertTo(units.KPA).Value) * 2.0 * 28.97) * 100, units.Percent}, nil
@@ -3468,6 +3718,7 @@ var DerivedParameters = map[string]DerivedParameter{
 		Id:                  "P243",
 		Name:                "Volumetric Efficiency 2.5L (Calculated)",
 		Description:         "P243-VE calculated from IGL, MMA, MAF, IAT, absolute manifold pressure, assuming engine displacement of 149.9 CID (EJ257)",
+		DefaultUnit:         units.Percent,
 		DependsOnParameters: []string{"P200", "P11", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
 			return &ParameterValue{((params["P200"].Value) * 2 * 8.314472 * ((params["P11"].SafeConvertTo(units.C).Value) + 273.15)) / ((params["P7"].SafeConvertTo(units.KPA).Value) * 2.5 * 28.97) * 100, units.Percent}, nil
