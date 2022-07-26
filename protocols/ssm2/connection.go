@@ -126,7 +126,15 @@ func (c *connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 
 // NextPacket reads the next packet from the ECU.
 func (c *connection) NextPacket(ctx context.Context) (Packet, error) {
-	c.logger.Debug("reading next packet")
+	return c.nextPacket(ctx, 1)
+}
+
+func (c *connection) nextPacket(ctx context.Context, attempt int) (Packet, error) {
+	if attempt > 5 {
+		return nil, fmt.Errorf("no valid packet could be read")
+	}
+
+	c.logger.Debugf("reading next packet (attempt %d)\n", attempt)
 
 	header := make([]byte, PacketHeaderSize)
 	c.logger.Debugf("reading %d header bytes\n", PacketHeaderSize)
@@ -149,7 +157,7 @@ func (c *connection) NextPacket(ctx context.Context) (Packet, error) {
 		}
 		// the magic byte isn't within this buffer, so restart
 		if mbi == nil {
-			return c.NextPacket(ctx)
+			return c.nextPacket(ctx, attempt+1)
 		}
 
 		// read the remaining header bytes and re-validate
@@ -176,7 +184,7 @@ func (c *connection) NextPacket(ctx context.Context) (Packet, error) {
 	calculatedChecksum := CalculateChecksum(packet)
 	if checksum != calculatedChecksum {
 		c.logger.Debugf("invalid checksum. want: %x. got: %x.\n", calculatedChecksum, checksum)
-		return nil, ErrInvalidChecksumByte
+		//return nil, ErrInvalidChecksumByte
 	}
 	return packet, nil
 }

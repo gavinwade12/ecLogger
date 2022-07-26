@@ -46,6 +46,7 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 
 	paramsContainer.RemoveAll()
 
+	loggedParams := readOnlyLoggedParams()
 	for _, param := range params {
 		param := param
 
@@ -54,39 +55,39 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 
 		logCheck := widget.NewCheck("Log To File", func(b bool) {
 			if b {
-				if config.LoggedParams[param.Id] != nil {
-					config.LoggedParams[param.Id].LogToFile = true
-				} else {
-					config.LoggedParams[param.Id] = &loggedParam{Derived: param.Derived, LogToFile: true}
-				}
+				updateOrAddToLoggedParams(param.Id, func(lp *loggedParam) {
+					lp.LogToFile = true
+				}, &loggedParam{Derived: param.Derived, LogToFile: true})
 			} else {
-				lp := config.LoggedParams[param.Id]
+				lp := getLoggedParam(param.Id)
 				if lp != nil && lp.LiveLog {
-					lp.LogToFile = false
+					updateLoggedParam(param.Id, func(lp *loggedParam) {
+						lp.LogToFile = false
+					})
 				} else {
-					delete(config.LoggedParams, param.Id)
+					removeFromLoggedParams(param.Id)
 				}
 			}
 		})
-		logCheck.SetChecked(config.LoggedParams[param.Id] != nil)
 		liveLogCheck := widget.NewCheck("Live Log", func(b bool) {
 			if b {
-				if config.LoggedParams[param.Id] != nil {
-					config.LoggedParams[param.Id].LiveLog = true
-				} else {
-					config.LoggedParams[param.Id] = &loggedParam{Derived: param.Derived, LiveLog: true}
-				}
+				updateOrAddToLoggedParams(param.Id, func(lp *loggedParam) {
+					lp.LiveLog = true
+				}, &loggedParam{Derived: param.Derived, LiveLog: true})
 			} else {
-				lp := config.LoggedParams[param.Id]
+				lp := getLoggedParam(param.Id)
 				if lp != nil && lp.LogToFile {
-					lp.LiveLog = false
+					updateLoggedParam(param.Id, func(lp *loggedParam) {
+						lp.LiveLog = false
+					})
 				} else {
-					delete(config.LoggedParams, param.Id)
+					removeFromLoggedParams(param.Id)
 				}
 			}
 			updateLiveLogParameters()
 		})
-		liveLogCheck.SetChecked(config.LoggedParams[param.Id] != nil && config.LoggedParams[param.Id].LiveLog)
+		logCheck.Checked = loggedParams[param.Id] != nil
+		liveLogCheck.Checked = loggedParams[param.Id] != nil && loggedParams[param.Id].LiveLog
 
 		options := make([]string, 1+len(units.UnitConversions[param.Unit]))
 		options[0] = string(param.Unit)
@@ -126,6 +127,52 @@ type parameterModel struct {
 	Description string
 	Derived     bool
 	Unit        units.Unit
+}
+
+func addToLoggedParams(key string, l *loggedParam) {
+	loggedParamsMu.Lock()
+	defer loggedParamsMu.Unlock()
+	config.LoggedParams[key] = l
+}
+
+func removeFromLoggedParams(key string) {
+	loggedParamsMu.Lock()
+	defer loggedParamsMu.Unlock()
+	delete(config.LoggedParams, key)
+}
+
+func updateLoggedParam(key string, update func(*loggedParam)) {
+	loggedParamsMu.Lock()
+	defer loggedParamsMu.Unlock()
+	update(config.LoggedParams[key])
+}
+
+func updateOrAddToLoggedParams(key string, update func(*loggedParam), add *loggedParam) {
+	loggedParamsMu.Lock()
+	defer loggedParamsMu.Unlock()
+
+	if config.LoggedParams[key] != nil {
+		update(config.LoggedParams[key])
+	} else {
+		config.LoggedParams[key] = add
+	}
+}
+
+func getLoggedParam(key string) *loggedParam {
+	loggedParamsMu.RLock()
+	defer loggedParamsMu.RUnlock()
+	return config.LoggedParams[key]
+}
+
+func readOnlyLoggedParams() map[string]*loggedParam {
+	loggedParamsMu.RLock()
+	defer loggedParamsMu.RUnlock()
+
+	m := make(map[string]*loggedParam)
+	for k, v := range config.LoggedParams {
+		m[k] = v
+	}
+	return m
 }
 
 type sortableParameters []parameterModel

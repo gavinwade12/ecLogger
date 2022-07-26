@@ -43,6 +43,16 @@ type ParameterAddress struct {
 	Length  int // used when the value takes more than 1 address e.g. a 32-bit value on a 16-bit ECU
 }
 
+func (a ParameterAddress) Add(i int) [3]byte {
+	if i == 0 {
+		return a.Address
+	}
+
+	addr := []byte{0x00, a.Address[0], a.Address[1], a.Address[2]}
+	binary.BigEndian.PutUint32(addr, binary.BigEndian.Uint32(addr)+1)
+	return [3]byte{addr[1], addr[2], addr[3]}
+}
+
 // Parameter value stores a parameter's value with its current unit.
 type ParameterValue struct {
 	Value float32

@@ -3,15 +3,18 @@ package ssm2
 import (
 	"context"
 	"math/rand"
+	"time"
 )
 
 type fakeConnection struct {
+	ticker *time.Ticker
+
 	continuousAddressRead bool
 	addresses             int
 }
 
-func NewFakeConnection() Connection {
-	return &fakeConnection{}
+func NewFakeConnection(latency time.Duration) Connection {
+	return &fakeConnection{ticker: time.NewTicker(latency)}
 }
 
 func (c *fakeConnection) InitECU(ctx context.Context) (*ECU, error) {
@@ -44,6 +47,7 @@ func (c *fakeConnection) SendReadAddressesRequest(ctx context.Context, addresses
 }
 
 func (c *fakeConnection) NextPacket(ctx context.Context) (Packet, error) {
+	<-c.ticker.C
 	if c.continuousAddressRead {
 		return c.addressResponsePacket(), nil
 	}

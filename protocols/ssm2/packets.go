@@ -81,6 +81,8 @@ func newPacket(src, dest byte, cmd byte, data []byte) Packet {
 	return packet
 }
 
+// CalculateChecksum calculates the checksum for a fully-allocated (including
+// the checksum byte itself) packet.
 func CalculateChecksum(p Packet) byte {
 	checksum := 0
 	for _, b := range p[:len(p)-1] {

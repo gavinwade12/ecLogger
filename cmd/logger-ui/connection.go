@@ -33,7 +33,7 @@ func connectionContainer() fyne.CanvasObject {
 	cancelBtn := widget.NewButton("Cancel", nil)
 	connectBtn.OnTapped = func() {
 		// disable this button and the select, show the cancel button, and stop
-		// quering for serial port changes
+		// querying for serial port changes
 		connectBtn.Disable()
 		serialPortSelect.Disable()
 		cancelBtn.Show()
@@ -52,6 +52,7 @@ func connectionContainer() fyne.CanvasObject {
 
 		// try connecting in another goroutine to prevent the UI from locking up
 		go func() {
+			connectionState.Set("Connecting")
 			err := openSSM2Connection()
 			if err != nil {
 				cancelBtn.Hide()
@@ -63,6 +64,7 @@ func connectionContainer() fyne.CanvasObject {
 				return
 			}
 
+			connectionState.Set("Initializing")
 			err = initSSM2Connection(ctx)
 			cancelBtn.Hide()
 			serialPortSelect.Enable()
@@ -88,7 +90,7 @@ func connectionContainer() fyne.CanvasObject {
 	return c
 }
 
-var openSSM2Connection = func() error {
+var defaultOpenFunc = func() error {
 	if logger == nil {
 		logger = ssm2.DefaultLogger(os.Stdout)
 	}
@@ -120,6 +122,8 @@ var openSSM2Connection = func() error {
 	conn = ssm2.NewConnection(sp, logger)
 	return nil
 }
+
+var openSSM2Connection = defaultOpenFunc
 
 func initSSM2Connection(ctx context.Context) error {
 	for {

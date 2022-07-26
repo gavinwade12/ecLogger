@@ -5,11 +5,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
 	"github.com/gavinwade12/ssm2/units"
 	"github.com/pkg/errors"
 )
@@ -17,14 +17,14 @@ import (
 var (
 	configFileName           = ".ssm2"
 	defaultLogFileNameFormat = "ssm2_log_{{romId}}_{{timestamp}}.csv"
+	config                   struct {
+		SelectedPort      string
+		LogFileNameFormat *string
+		LoggedParams      map[string]*loggedParam
+		UseFakeConnection bool
+	}
+	loggedParamsMu sync.RWMutex
 )
-
-var config struct {
-	SelectedPort      string
-	LogFileNameFormat *string
-	LoggedParams      map[string]*loggedParam
-	UseMockConnection bool
-}
 
 type loggedParam struct {
 	LogToFile bool
@@ -36,12 +36,6 @@ type loggedParam struct {
 func main() {
 	if err := loadConfig(); err != nil {
 		log.Fatal(err)
-	}
-	if config.UseMockConnection {
-		openSSM2Connection = func() error {
-			conn = ssm2.NewFakeConnection()
-			return nil
-		}
 	}
 
 	a := app.New()
