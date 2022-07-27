@@ -172,6 +172,7 @@ func startLogging(ctx context.Context) {
 		}
 	}
 
+	errCount := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -180,8 +181,14 @@ func startLogging(ctx context.Context) {
 			packet, err := conn.NextPacket(ctx)
 			if err != nil {
 				logger.Debug(err.Error())
+				errCount++
+				if errCount == 3 {
+					updateLiveLogParameters()
+					return
+				}
 				continue
 			}
+			errCount = 0
 
 			data := packet.Data()
 			addrIndex := 0
