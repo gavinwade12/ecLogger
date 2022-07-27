@@ -81,7 +81,6 @@ var logCmd = &cobra.Command{
 			}
 			ecu = nil
 
-			fmt.Println("read timed out")
 			if err = conn.Close(); err != nil {
 				return errors.Wrap(err, "closing ssm2 connection")
 			}

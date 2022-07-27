@@ -19,6 +19,9 @@ func parametersContainer() fyne.CanvasObject {
 }
 
 func setAvailableParameters(ecu *ssm2.ECU) {
+	if ecu == nil {
+		ecu = &ssm2.ECU{}
+	}
 	params := make([]parameterModel, len(ecu.SupportedParameters)+
 		len(ecu.SupportedDerivedParameters))
 	i := 0
@@ -53,11 +56,32 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 		name := widget.NewLabel(param.Name)
 		name.Wrapping = fyne.TextWrapBreak
 
-		logCheck := widget.NewCheck("Log To File", func(b bool) {
+		options := make([]string, 1+len(units.UnitConversions[param.Unit]))
+		options[0] = string(param.Unit)
+		i := 1
+		for u := range units.UnitConversions[param.Unit] {
+			options[i] = string(u)
+			i++
+		}
+
+		unit := widget.NewSelect(options, func(s string) {
+			lp := getLoggedParam(param.Id)
+			if lp != nil {
+				lp.Unit = units.Unit(s)
+			}
+		})
+		lp := loggedParams[param.Id]
+		if lp != nil {
+			unit.Selected = string(lp.Unit)
+		} else {
+			unit.Selected = options[0]
+		}
+
+		fileLogCheck := widget.NewCheck("Log To File", func(b bool) {
 			if b {
 				updateOrAddToLoggedParams(param.Id, func(lp *loggedParam) {
 					lp.LogToFile = true
-				}, &loggedParam{Derived: param.Derived, LogToFile: true})
+				}, &loggedParam{Derived: param.Derived, LogToFile: true, Unit: units.Unit(unit.Selected)})
 			} else {
 				lp := getLoggedParam(param.Id)
 				if lp != nil && lp.LiveLog {
@@ -73,7 +97,7 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 			if b {
 				updateOrAddToLoggedParams(param.Id, func(lp *loggedParam) {
 					lp.LiveLog = true
-				}, &loggedParam{Derived: param.Derived, LiveLog: true})
+				}, &loggedParam{Derived: param.Derived, LiveLog: true, Unit: units.Unit(unit.Selected)})
 			} else {
 				lp := getLoggedParam(param.Id)
 				if lp != nil && lp.LogToFile {
@@ -86,33 +110,12 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 			}
 			updateLiveLogParameters()
 		})
-		logCheck.Checked = loggedParams[param.Id] != nil
+		fileLogCheck.Checked = loggedParams[param.Id] != nil && loggedParams[param.Id].LogToFile
 		liveLogCheck.Checked = loggedParams[param.Id] != nil && loggedParams[param.Id].LiveLog
-
-		options := make([]string, 1+len(units.UnitConversions[param.Unit]))
-		options[0] = string(param.Unit)
-		i := 1
-		for u := range units.UnitConversions[param.Unit] {
-			options[i] = string(u)
-			i++
-		}
-
-		unit := widget.NewSelect(options, func(s string) {
-			lp := config.LoggedParams[param.Id]
-			if lp != nil {
-				lp.Unit = units.Unit(s)
-			}
-		})
-		lp := config.LoggedParams[param.Id]
-		if lp != nil {
-			unit.SetSelected(string(lp.Unit))
-		} else {
-			unit.SetSelected(options[0])
-		}
 
 		paramsContainer.Objects = append(paramsContainer.Objects,
 			name,
-			logCheck,
+			fileLogCheck,
 			liveLogCheck,
 			unit,
 		)

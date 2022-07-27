@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strconv"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gavinwade12/ssm2/protocols/ssm2"
 )
@@ -18,13 +18,31 @@ import (
 var liveLogContainer *fyne.Container
 
 func loggingContainer() fyne.CanvasObject {
+	startBtn := widget.NewToolbarAction(theme.MediaPlayIcon(), nil)
+	stopBtn := widget.NewToolbarAction(theme.MediaStopIcon(), nil)
+	toolbar := widget.NewToolbar()
+
+	startBtn.OnActivated = func() {
+		// TODO: start file logging
+		toolbar.Items = []widget.ToolbarItem{}
+		toolbar.Append(stopBtn)
+	}
+	stopBtn.OnActivated = func() {
+		// TODO: stop file logging
+		toolbar.Items = []widget.ToolbarItem{}
+		toolbar.Append(startBtn)
+	}
+	toolbar.Append(startBtn)
+
 	liveLogContainer = container.New(layout.NewGridLayout(3))
-	return container.NewVScroll(liveLogContainer)
+	return container.NewBorder(toolbar, nil, nil, nil, container.NewVScroll(liveLogContainer))
 }
 
 type liveLogModel struct {
+	Id                  string
 	Name                string
 	CurrentValueBinding binding.String
+	UnitBinding         binding.String
 
 	MaxValue        float32
 	MaxValueBinding binding.String
@@ -32,10 +50,12 @@ type liveLogModel struct {
 	MinValueBinding binding.String
 }
 
-func newLiveLogModel(name string) *liveLogModel {
+func newLiveLogModel(id, name string) *liveLogModel {
 	m := &liveLogModel{
+		Id:                  id,
 		Name:                name,
 		CurrentValueBinding: binding.NewString(),
+		UnitBinding:         binding.NewString(),
 		MaxValueBinding:     binding.NewString(),
 		MinValueBinding:     binding.NewString(),
 	}
@@ -45,16 +65,17 @@ func newLiveLogModel(name string) *liveLogModel {
 	return m
 }
 
-func (m *liveLogModel) Update(val float32) {
-	f := strconv.FormatFloat(float64(val), 'f', 2, 32)
+func (m *liveLogModel) Update(val ssm2.ParameterValue) {
+	f := strconv.FormatFloat(float64(val.Value), 'f', 2, 32)
 	m.CurrentValueBinding.Set(f)
+	m.UnitBinding.Set(string(val.Unit))
 
-	if val > m.MaxValue {
-		m.MaxValue = val
+	if val.Value > m.MaxValue {
+		m.MaxValue = val.Value
 		m.MaxValueBinding.Set(f)
 	}
-	if val < m.MinValue {
-		m.MinValue = val
+	if val.Value < m.MinValue {
+		m.MinValue = val.Value
 		m.MinValueBinding.Set(f)
 	}
 }
@@ -67,8 +88,19 @@ var (
 func updateLiveLogParameters() {
 	liveLogContainer.RemoveAll()
 
+	if stopLogging != nil {
+		stopLogging()
+		stopLogging = nil
+	}
+
 	liveLogModelsMu.Lock()
 	liveLogModels = []*liveLogModel{}
+	if conn == nil {
+		liveLogModelsMu.Unlock()
+		liveLogContainer.Refresh()
+		return
+	}
+
 	loggedParams := readOnlyLoggedParams()
 	for id, param := range loggedParams {
 		if !param.LiveLog {
@@ -82,17 +114,20 @@ func updateLiveLogParameters() {
 			name = ssm2.Parameters[id].Name
 		}
 
-		liveLogModels = append(liveLogModels, newLiveLogModel(name))
+		liveLogModels = append(liveLogModels, newLiveLogModel(id, name))
 	}
 	sort.Sort(sortableLiveLogModels(liveLogModels))
-	liveLogModelLen := len(liveLogModels)
+	liveLogModelsLen := len(liveLogModels)
 	liveLogModelsMu.Unlock()
 
 	for _, m := range liveLogModels {
 		liveLogContainer.Objects = append(liveLogContainer.Objects,
 			container.NewVBox(
 				widget.NewLabel(m.Name),
-				widget.NewLabelWithData(m.CurrentValueBinding),
+				container.NewHBox(
+					widget.NewLabelWithData(m.CurrentValueBinding),
+					widget.NewLabelWithData(m.UnitBinding),
+				),
 				container.NewHBox(
 					widget.NewLabelWithData(m.MinValueBinding),
 					widget.NewLabel("/"),
@@ -103,13 +138,7 @@ func updateLiveLogParameters() {
 
 	liveLogContainer.Refresh()
 
-	if liveLogModelLen > 0 {
-		if stopLogging != nil {
-			fmt.Println("stop logging")
-			stopLogging()
-			stopLogging = nil
-		}
-
+	if liveLogModelsLen > 0 {
 		var ctx context.Context
 		ctx, stopLogging = context.WithCancel(context.Background())
 		go startLogging(ctx)
@@ -136,16 +165,13 @@ func startLogging(ctx context.Context) {
 		params = append(params, param)
 	}
 
-	fmt.Println("sending read address request")
 	for {
 		_, err := conn.SendReadAddressesRequest(ctx, addressesToRead, true)
 		if err == nil {
 			break
 		}
-		fmt.Println(err.Error())
 	}
 
-	fmt.Println("starting packet read")
 	for {
 		select {
 		case <-ctx.Done():
@@ -158,32 +184,50 @@ func startLogging(ctx context.Context) {
 			}
 
 			data := packet.Data()
-			addrIndex, liveLogIndex := 0, 0
+			addrIndex := 0
 			values := make(map[string]ssm2.ParameterValue)
-			liveLogModelsMu.Lock()
 			loggedParams := readOnlyLoggedParams()
 			for _, param := range params {
+				lp := loggedParams[param.Id]
+				if lp == nil {
+					continue
+				}
+
 				val := param.Value(data[addrIndex : addrIndex+param.Address.Length])
+				u := lp.Unit
+				if u != val.Unit {
+					vval, err := val.ConvertTo(u)
+					if err != nil {
+						logger.Debugf("converting %s from %s to %s: %v", param.Id, val.Unit, u, err)
+						continue
+					}
+					val = *vval
+				}
 				values[param.Id] = val
 				addrIndex += param.Address.Length
-
-				if loggedParams[param.Id].LiveLog {
-					liveLogModels[liveLogIndex].Update(val.Value)
-					liveLogIndex++
-				}
 			}
 			for _, param := range derivedParams {
-				val, err := param.Value(values)
-				if err == nil {
-					values[param.Id] = *val
+				lp := loggedParams[param.Id]
+				if lp == nil {
+					continue
 				}
 
-				if loggedParams[param.Id].LiveLog {
-					liveLogIndex++
-					if err == nil {
-						liveLogModels[liveLogIndex].Update(val.Value)
+				val, err := param.Value(values)
+				if err == nil {
+					u := lp.Unit
+					if u != val.Unit {
+						val, err = val.ConvertTo(u)
+						if err != nil {
+							logger.Debugf("converting %s from %s to %s: %v", param.Id, val.Unit, u, err)
+							continue
+						}
 					}
+					values[param.Id] = *val
 				}
+			}
+			liveLogModelsMu.Lock()
+			for _, m := range liveLogModels {
+				m.Update(values[m.Id])
 			}
 			liveLogModelsMu.Unlock()
 		}

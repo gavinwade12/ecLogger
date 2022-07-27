@@ -18,10 +18,12 @@ var (
 	configFileName           = ".ssm2"
 	defaultLogFileNameFormat = "ssm2_log_{{romId}}_{{timestamp}}.csv"
 	config                   struct {
-		SelectedPort      string
-		LogFileNameFormat *string
-		LoggedParams      map[string]*loggedParam
-		UseFakeConnection bool
+		SelectedPort        string
+		LogFileNameFormat   *string
+		LoggedParams        map[string]*loggedParam
+		UseFakeConnection   bool
+		AutoConnect         bool
+		DefaultToLoggingTab bool
 	}
 	loggedParamsMu sync.RWMutex
 )
@@ -48,6 +50,12 @@ func main() {
 		container.NewTabItem("Logging", loggingContainer()),
 		container.NewTabItem("Settings", settingsContainer()),
 	)
+	if config.AutoConnect {
+		go connectBtn.Tapped(&fyne.PointEvent{})
+	}
+	if config.DefaultToLoggingTab {
+		tabs.SelectIndex(2)
+	}
 
 	tabs.SetTabLocation(container.TabLocationLeading)
 
@@ -83,6 +91,9 @@ func loadConfig() error {
 	}
 	if config.LoggedParams == nil {
 		config.LoggedParams = make(map[string]*loggedParam)
+	}
+	if config.UseFakeConnection {
+		openSSM2Connection = fakeOpenFunc
 	}
 	return nil
 }

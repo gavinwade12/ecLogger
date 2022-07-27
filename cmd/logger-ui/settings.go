@@ -1,12 +1,9 @@
 package main
 
 import (
-	"time"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
 )
 
 func settingsContainer() fyne.CanvasObject {
@@ -19,17 +16,19 @@ func settingsContainer() fyne.CanvasObject {
 		}
 
 		if val {
-			openSSM2Connection = func() error {
-				conn = ssm2.NewFakeConnection(time.Millisecond * 50)
-				return nil
-			}
+			openSSM2Connection = fakeOpenFunc
 		} else {
 			openSSM2Connection = defaultOpenFunc
 		}
 	}))
+
 	form := widget.NewForm(
 		widget.NewFormItem("Log File Name Format", widget.NewEntryWithData(
 			binding.BindString(config.LogFileNameFormat))),
+		widget.NewFormItem("Auto Connect", widget.NewCheckWithData("",
+			binding.BindBool(&config.AutoConnect))),
+		widget.NewFormItem("Default to Logging Tab", widget.NewCheckWithData(
+			"", binding.BindBool(&config.DefaultToLoggingTab))),
 		widget.NewFormItem("Use Fake Connection", widget.NewCheckWithData("", fakeConnection)),
 	)
 
