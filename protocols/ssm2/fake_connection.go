@@ -58,6 +58,10 @@ func (c *fakeConnection) Close() error {
 	return nil
 }
 
+func (c *fakeConnection) logger() Logger {
+	return NopLogger
+}
+
 func (c *fakeConnection) addressResponsePacket() Packet {
 	resp := make(Packet, PacketHeaderSize+c.addresses+1)
 	resp[0] = PacketMagicByte

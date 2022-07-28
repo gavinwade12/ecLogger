@@ -18,11 +18,13 @@ type Connection interface {
 	SendReadAddressesRequest(ctx context.Context, addresses [][3]byte, continous bool) (Packet, error)
 	NextPacket(ctx context.Context) (Packet, error)
 	Close() error
+
+	logger() Logger
 }
 
 type connection struct {
 	serialPort io.ReadWriteCloser
-	logger     Logger
+	log        Logger
 }
 
 const (
@@ -48,7 +50,7 @@ func NewConnection(serialPort io.ReadWriteCloser, l Logger) Connection {
 	}
 	return &connection{
 		serialPort: serialPort,
-		logger:     l,
+		log:        l,
 	}
 }
 
@@ -98,7 +100,7 @@ func (c *connection) SendReadAddressesRequest(ctx context.Context, addresses [][
 }
 
 func (c *connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
-	logBytes(c.logger, p, "sending packet: ")
+	logBytes(c.log, p, "sending packet: ")
 
 	wb, err := c.serialPort.Write(p)
 	if err != nil {
@@ -117,7 +119,7 @@ func (c *connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 		}
 		currentCommand = p[PacketIndexCommand]
 		if currentCommand == sentCommand {
-			c.logger.Debug("read back same command")
+			c.log.Debug("read back same command")
 		}
 	}
 
@@ -134,10 +136,10 @@ func (c *connection) nextPacket(ctx context.Context, attempt int) (Packet, error
 		return nil, fmt.Errorf("no valid packet could be read")
 	}
 
-	c.logger.Debugf("reading next packet (attempt %d)\n", attempt)
+	c.log.Debugf("reading next packet (attempt %d)\n", attempt)
 
 	header := make([]byte, PacketHeaderSize)
-	c.logger.Debugf("reading %d header bytes\n", PacketHeaderSize)
+	c.log.Debugf("reading %d header bytes\n", PacketHeaderSize)
 	err := c.readInFull(ctx, header)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading packet header")
@@ -173,7 +175,7 @@ func (c *connection) nextPacket(ctx context.Context, attempt int) (Packet, error
 	}
 
 	payload := make([]byte, int(header[PacketIndexPayloadSize]))
-	c.logger.Debugf("reading %d payload bytes\n", len(payload))
+	c.log.Debugf("reading %d payload bytes\n", len(payload))
 	err = c.readInFull(ctx, payload)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading packet payload")
@@ -183,8 +185,8 @@ func (c *connection) nextPacket(ctx context.Context, attempt int) (Packet, error
 	checksum := packet[len(packet)-1]
 	calculatedChecksum := CalculateChecksum(packet)
 	if checksum != calculatedChecksum {
-		c.logger.Debugf("invalid checksum. want: %x. got: %x.\n", calculatedChecksum, checksum)
-		//return nil, ErrInvalidChecksumByte
+		c.log.Debugf("invalid checksum. want: %x. got: %x.\n", calculatedChecksum, checksum)
+		return nil, ErrInvalidChecksumByte
 	}
 	return packet, nil
 }
@@ -204,11 +206,11 @@ func (c *connection) readInFull(ctx context.Context, b []byte) error {
 				result <- readResult{readCount, err}
 			}
 
-			c.logger.Debug("starting read")
+			c.log.Debug("starting read")
 			count, err := c.serialPort.Read(b[readCount:])
 
 			if count > 0 {
-				logBytes(c.logger, b[readCount:readCount+count], "read: ")
+				logBytes(c.log, b[readCount:readCount+count], "read: ")
 			}
 			readCount += count
 
@@ -230,8 +232,12 @@ func (c *connection) readInFull(ctx context.Context, b []byte) error {
 	}
 }
 
+func (c *connection) logger() Logger {
+	return c.log
+}
+
 func (c *connection) Close() error {
-	c.logger.Debug("closing connection")
+	c.log.Debug("closing connection")
 
 	if c.serialPort != nil {
 		return c.serialPort.Close()
@@ -242,7 +248,7 @@ func (c *connection) Close() error {
 
 func (c *connection) waitForNBytesToTransfer(ctx context.Context, n int) error {
 	ms := microsecondsOnTheWire(n)
-	c.logger.Debugf("waiting %s for %d bytes\n", ms, n)
+	c.log.Debugf("waiting %s for %d bytes\n", ms, n)
 	select {
 	case <-time.NewTimer(ms).C:
 		return nil

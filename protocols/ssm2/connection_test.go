@@ -185,7 +185,7 @@ func TestInitECU(t *testing.T) {
 		}
 
 		got := port.in.Bytes()
-		if bytes.Compare(initRequestPacket, got) != 0 {
+		if !bytes.Equal(initRequestPacket, got) {
 			t.Fatalf("unexpected init request. want: 0x%x. got: 0x%x.", initRequestPacket, got)
 		}
 	})
@@ -235,10 +235,10 @@ func TestInitECU(t *testing.T) {
 			t.Fatal("ecu is nil")
 		}
 
-		if bytes.Compare(ecu.SSM_ID, ssmID) != 0 {
+		if !bytes.Equal(ecu.SSM_ID, ssmID) {
 			t.Fatalf("invalid SSM_ID. want: %x. got: %x.", ssmID, ecu.SSM_ID)
 		}
-		if bytes.Compare(ecu.ROM_ID, romID) != 0 {
+		if !bytes.Equal(ecu.ROM_ID, romID) {
 			t.Fatalf("invalid ROM_ID. want: %x. got: %x.", romID, ecu.ROM_ID)
 		}
 
@@ -302,7 +302,7 @@ func TestSendReadAddressesRequest(t *testing.T) {
 		}
 		want = append(want, calculateChecksum(want))
 
-		if bytes.Compare(want, got) != 0 {
+		if !bytes.Equal(want, got) {
 			t.Fatalf("unexpected read addresses request. want: 0x%x. got: 0x%x.", want, got)
 		}
 
@@ -323,7 +323,7 @@ func TestSendReadAddressesRequest(t *testing.T) {
 		}
 		want = append(want, calculateChecksum(want))
 
-		if bytes.Compare(want, got) != 0 {
+		if !bytes.Equal(want, got) {
 			t.Fatalf("unexpected read addresses request. want: 0x%x. got: 0x%x.", want, got)
 		}
 	})

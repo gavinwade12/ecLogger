@@ -155,12 +155,13 @@ func initSSM2Connection(ctx context.Context) error {
 			conn.Close()
 			return ctx.Err()
 		default:
-			resp, err := conn.InitECU(ctx)
+			var err error
+			ecu, err = conn.InitECU(ctx)
 			if err != nil {
 				logger.Debug(err.Error())
 				continue
 			}
-			setAvailableParameters(resp)
+			setAvailableParameters(ecu)
 			updateLiveLogParameters()
 			connectionState.Set("Connected")
 			return nil
@@ -202,7 +203,9 @@ func querySerialPorts() {
 	}
 }
 
-var connectionState = binding.NewString()
-
-var logger = ssm2.DefaultLogger(os.Stdout)
-var conn ssm2.Connection
+var (
+	connectionState = binding.NewString()
+	logger          = ssm2.DefaultLogger(os.Stdout)
+	conn            ssm2.Connection
+	ecu             *ssm2.ECU
+)

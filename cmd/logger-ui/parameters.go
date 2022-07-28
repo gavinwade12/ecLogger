@@ -54,7 +54,7 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 		param := param
 
 		name := widget.NewLabel(param.Name)
-		name.Wrapping = fyne.TextWrapBreak
+		name.Wrapping = fyne.TextWrapWord
 
 		options := make([]string, 1+len(units.UnitConversions[param.Unit]))
 		options[0] = string(param.Unit)
@@ -130,12 +130,6 @@ type parameterModel struct {
 	Description string
 	Derived     bool
 	Unit        units.Unit
-}
-
-func addToLoggedParams(key string, l *loggedParam) {
-	loggedParamsMu.Lock()
-	defer loggedParamsMu.Unlock()
-	config.LoggedParams[key] = l
 }
 
 func removeFromLoggedParams(key string) {
