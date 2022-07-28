@@ -7,14 +7,15 @@ import (
 )
 
 type fakeConnection struct {
-	ticker *time.Ticker
+	latency time.Duration
+	ticker  *time.Ticker
 
 	continuousAddressRead bool
 	addresses             int
 }
 
 func NewFakeConnection(latency time.Duration) Connection {
-	return &fakeConnection{ticker: time.NewTicker(latency)}
+	return &fakeConnection{latency: latency}
 }
 
 func (c *fakeConnection) InitECU(ctx context.Context) (*ECU, error) {
@@ -42,6 +43,7 @@ func (c *fakeConnection) InitECU(ctx context.Context) (*ECU, error) {
 func (c *fakeConnection) SendReadAddressesRequest(ctx context.Context, addresses [][3]byte, continous bool) (Packet, error) {
 	c.continuousAddressRead = continous
 	c.addresses = len(addresses)
+	c.ticker = time.NewTicker(c.latency)
 
 	return c.addressResponsePacket(), nil
 }

@@ -227,9 +227,11 @@ func updateLiveLogParameters() {
 	liveLogModelsMu.Unlock()
 
 	for _, m := range liveLogModels {
+		label := widget.NewLabel(m.Name)
+		label.Wrapping = fyne.TextWrapWord
 		liveLogContainer.Objects = append(liveLogContainer.Objects,
 			container.NewVBox(
-				widget.NewLabel(m.Name),
+				label,
 				container.NewHBox(
 					widget.NewLabelWithData(m.CurrentValueBinding),
 					widget.NewLabelWithData(m.UnitBinding),
@@ -289,13 +291,12 @@ func startLogging(ctx context.Context) {
 
 				vval, err := val.ConvertTo(lp.Unit)
 				if err != nil {
-					logger.Debugf("converting %s from %s to %s: %v", id, val.Unit, lp.Unit, err)
+					logger.Debugf("converting %s from %s to %s: %v\n", id, val.Unit, lp.Unit, err)
 					continue
 				}
 				result[id] = *vval
 			}
 
-			// update the live log models with the new results
 			loggingProcessorsMu.Lock()
 			for _, p := range loggingProcessors {
 				p(result)

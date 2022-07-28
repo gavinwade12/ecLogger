@@ -12,9 +12,11 @@ import (
 )
 
 var paramsContainer *fyne.Container
+var paramsLayout fyne.Layout
 
 func parametersContainer() fyne.CanvasObject {
-	paramsContainer = container.New(layout.NewGridLayout(4))
+	paramsLayout = layout.NewGridLayout(4)
+	paramsContainer = container.New(paramsLayout)
 	return container.NewVScroll(paramsContainer)
 }
 
