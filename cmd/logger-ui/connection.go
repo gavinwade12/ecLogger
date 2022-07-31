@@ -92,10 +92,10 @@ func connectionContainer() fyne.CanvasObject {
 		conn = nil
 		disconnectBtn.Hide()
 		go querySerialPorts()
-		connectBtn.Enable()
-		connectionState.Set("Disconnected")
 		setAvailableParameters(nil)
 		updateLiveLogParameters()
+		connectBtn.Enable()
+		connectionState.Set("Disconnected")
 	}
 	cancelBtn.Hide()
 	disconnectBtn.Hide()

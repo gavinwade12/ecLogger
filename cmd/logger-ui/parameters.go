@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -123,6 +124,10 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 		)
 	}
 
+	// TODO: why do we have to sleep for this to layout correctly?
+	// no sleep = random row height
+	time.Sleep(time.Millisecond * 500)
+	paramsContainer.Resize(paramsLayout.MinSize(paramsContainer.Objects))
 	paramsContainer.Refresh()
 }
 
