@@ -1,4 +1,4 @@
-module github.com/gavinwade12/ssm2
+module github.com/gavinwade12/ecLogger
 
 go 1.18
 

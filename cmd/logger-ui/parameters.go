@@ -8,8 +8,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
-	"github.com/gavinwade12/ssm2/units"
+	"github.com/gavinwade12/ecLogger/protocols/ssm2"
+	"github.com/gavinwade12/ecLogger/units"
 )
 
 var paramsContainer *fyne.Container

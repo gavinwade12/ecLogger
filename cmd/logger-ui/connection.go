@@ -10,7 +10,7 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
+	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/pkg/errors"
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"

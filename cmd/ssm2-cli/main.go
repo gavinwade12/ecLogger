@@ -5,7 +5,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
+	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"

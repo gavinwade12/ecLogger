@@ -3,7 +3,7 @@ package ssm2
 import (
 	"encoding/binary"
 
-	"github.com/gavinwade12/ssm2/units"
+	"github.com/gavinwade12/ecLogger/units"
 )
 
 // Parameter represents a parameter that can be read from the ECU.

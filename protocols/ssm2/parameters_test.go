@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
-	"github.com/gavinwade12/ssm2/units"
+	"github.com/gavinwade12/ecLogger/protocols/ssm2"
+	"github.com/gavinwade12/ecLogger/units"
 )
 
 func TestAddress_Add(t *testing.T) {

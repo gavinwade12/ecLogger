@@ -18,7 +18,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
+	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
 var liveLogContainer *fyne.Container

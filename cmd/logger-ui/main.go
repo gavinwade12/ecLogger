@@ -10,7 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"github.com/gavinwade12/ssm2/units"
+	"github.com/gavinwade12/ecLogger/units"
 	"github.com/pkg/errors"
 )
 

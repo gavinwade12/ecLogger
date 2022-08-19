@@ -7,7 +7,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/gavinwade12/ssm2/protocols/ssm2"
+	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
 type testSerialPort struct {
