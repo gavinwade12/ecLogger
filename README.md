@@ -6,12 +6,12 @@ ecLogger is a desktop application for connecting to a Subaru ECU via the SSMII p
 
 ## Why
 
-Subarus.. Programming.. Data.. Something new to learn.. I'm a nerd. I would also like a few-seconds warning before my WRX blows up.
+Subarus.. Programming.. Data.. Something new to learn.. I'm a nerd. I would also like a few-seconds warning before my WRX blows up. Plus, this gave me a reason to finally buy a touchscreen for my Raspberry Pi.
 
 ## How
 
 ecLogger is written in [Go](https://go.dev/) and uses [Fyne](https://fyne.io/) for the GUI layer. 
-This allows it to run just about anywhere.
+This allows it to run just about anywhere. I currently run it on a Raspberry Pi 3 Model B.
 
 ## Building
 
