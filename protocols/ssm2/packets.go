@@ -8,13 +8,14 @@ import (
 
 // Packet defines the common packet structure used in requests and respones.
 // The format is:
+//
 //	Magic byte (0x80)
 //	Dest
 //	Src
 //	Payload Size (count of data bytes + 1 checksum byte)
 //	Command
-// 	Data
-// 	Checksum
+//	Data
+//	Checksum
 type Packet []byte
 
 // Constant values used to describe pieces of a packet.
@@ -60,6 +61,7 @@ var (
 	ErrInvalidChecksumByte = errors.New("invalid checksum byte")
 )
 
+// Data returns the section of the packet corresponding to the payload data.
 func (p Packet) Data() []byte {
 	return p[PacketIndexPayloadStart : len(p)-1]
 }
@@ -125,6 +127,7 @@ func validateHeader(b []byte) error {
 	return nil
 }
 
+// ECU describes an ECU and the different parameters it supports.
 type ECU struct {
 	SSM_ID []byte
 	ROM_ID []byte

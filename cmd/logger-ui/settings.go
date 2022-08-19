@@ -23,6 +23,8 @@ func settingsContainer() fyne.CanvasObject {
 	}))
 
 	form := widget.NewForm(
+		widget.NewFormItem("Log Directory", widget.NewEntryWithData(
+			binding.BindString(config.LogDirectory))),
 		widget.NewFormItem("Log File Name Format", widget.NewEntryWithData(
 			binding.BindString(config.LogFileNameFormat))),
 		widget.NewFormItem("Auto Connect", widget.NewCheckWithData("",

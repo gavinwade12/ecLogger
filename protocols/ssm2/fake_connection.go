@@ -14,10 +14,14 @@ type fakeConnection struct {
 	addresses             int
 }
 
+// NewFakeConnection returns a new Connection that
+// isn't connected to a real device. It returns fake
+// data on an interval based on the given latency.
 func NewFakeConnection(latency time.Duration) Connection {
 	return &fakeConnection{latency: latency}
 }
 
+// InitECU returns fake ECU data with all supported parameters.
 func (c *fakeConnection) InitECU(ctx context.Context) (*ECU, error) {
 	params := make([]Parameter, len(Parameters))
 	i := 0
@@ -40,6 +44,9 @@ func (c *fakeConnection) InitECU(ctx context.Context) (*ECU, error) {
 	}, nil
 }
 
+// SendReadAddressesRequest returns an address response packet and
+// optionally configures the connection to continue returning
+// address response packets on each call to NextPacket().
 func (c *fakeConnection) SendReadAddressesRequest(ctx context.Context, addresses [][3]byte, continous bool) (Packet, error) {
 	c.continuousAddressRead = continous
 	c.addresses = len(addresses)
@@ -48,6 +55,8 @@ func (c *fakeConnection) SendReadAddressesRequest(ctx context.Context, addresses
 	return c.addressResponsePacket(), nil
 }
 
+// NextPacket waits for the connection's latency and then returns
+// a packet.
 func (c *fakeConnection) NextPacket(ctx context.Context) (Packet, error) {
 	<-c.ticker.C
 	if c.continuousAddressRead {
@@ -56,6 +65,7 @@ func (c *fakeConnection) NextPacket(ctx context.Context) (Packet, error) {
 	return Packet{}, nil
 }
 
+// Close does nothing.
 func (c *fakeConnection) Close() error {
 	return nil
 }

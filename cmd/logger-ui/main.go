@@ -15,10 +15,12 @@ import (
 )
 
 var (
+	configDirectoryName      = "ssm2"
 	configFileName           = ".ssm2"
 	defaultLogFileNameFormat = "ssm2_log_{{romId}}_{{timestamp}}.csv"
 	config                   struct {
 		SelectedPort        string
+		LogDirectory        *string
 		LogFileNameFormat   *string
 		LoggedParams        map[string]*loggedParam
 		UseFakeConnection   bool
@@ -35,6 +37,8 @@ type loggedParam struct {
 	Unit      units.Unit
 }
 
+var tabItems *container.AppTabs
+
 func main() {
 	if err := loadConfig(); err != nil {
 		log.Fatal(err)
@@ -44,22 +48,24 @@ func main() {
 	w := a.NewWindow("Logger")
 	w.Resize(fyne.NewSize(800, 400))
 
-	tabs := container.NewAppTabs(
+	tabItems = container.NewAppTabs(
 		container.NewTabItem("Connection", connectionContainer()),
 		container.NewTabItem("Parameters", parametersContainer()),
 		container.NewTabItem("Logging", loggingContainer()),
 		container.NewTabItem("Settings", settingsContainer()),
 	)
+	tabItems.DisableIndex(1)
+	tabItems.DisableIndex(2)
 	if config.AutoConnect {
 		go connectBtn.Tapped(&fyne.PointEvent{})
 	}
 	if config.DefaultToLoggingTab {
-		tabs.SelectIndex(2)
+		tabItems.SelectIndex(2)
 	}
 
-	tabs.SetTabLocation(container.TabLocationLeading)
+	tabItems.SetTabLocation(container.TabLocationLeading)
 
-	w.SetContent(tabs)
+	w.SetContent(tabItems)
 	w.ShowAndRun()
 
 	if err := saveConfig(); err != nil {
@@ -72,13 +78,16 @@ func loadConfig() error {
 	if err != nil {
 		return errors.Wrap(err, "finding user home directory")
 	}
+	ssm2Dir := filepath.Join(dir, configDirectoryName)
 
-	f, err := os.Open(filepath.Join(dir, configFileName))
+	f, err := os.Open(filepath.Join(ssm2Dir, configFileName))
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return errors.Wrap(err, "opening config file")
 		}
 
+		logDirectory := filepath.Join(ssm2Dir, "logs")
+		config.LogDirectory = &logDirectory
 		config.LogFileNameFormat = &defaultLogFileNameFormat
 		config.LoggedParams = make(map[string]*loggedParam)
 		return nil
@@ -104,9 +113,20 @@ func saveConfig() error {
 		return errors.Wrap(err, "finding user home directory")
 	}
 
-	f, err := os.OpenFile(filepath.Join(dir, configFileName), os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
+	configPath := filepath.Join(dir, configDirectoryName, configFileName)
+	f, err := os.OpenFile(configPath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
 	if err != nil {
-		return errors.Wrap(err, "opening config file")
+		if !os.IsNotExist(err) {
+			return errors.Wrap(err, "opening config file")
+		}
+
+		if err = os.Mkdir(filepath.Join(dir, configDirectoryName), os.ModePerm); err != nil {
+			return errors.Wrap(err, "creating config directory")
+		}
+		f, err = os.OpenFile(configPath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
+		if err != nil {
+			return errors.Wrap(err, "opening config file")
+		}
 	}
 	defer f.Close()
 

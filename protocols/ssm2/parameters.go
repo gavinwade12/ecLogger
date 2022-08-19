@@ -19,7 +19,7 @@ type Parameter struct {
 	CapabilityBitIndex uint8
 
 	// Address is present when the parameter value is read from RAM instead of calculated
-	Address *ParameterAddress
+	Address *Address
 
 	Value func(v []byte) ParameterValue
 }
@@ -36,20 +36,22 @@ type DerivedParameter struct {
 	Value func(parameters map[string]ParameterValue) (*ParameterValue, error)
 }
 
-// ParameterAddress describes the address(es) containing the value for the parameter
+// Address describes the address(es) containing the value for the parameter
 // with an optional bit for switch parameters.
-type ParameterAddress struct {
+type Address struct {
 	Address [3]byte
-	Length  int // used when the value takes more than 1 address e.g. a 32-bit value on a 16-bit ECU
+	Length  int   // used when the value takes more than 1 address e.g. a 32-bit value on a 16-bit ECU
+	Bit     uint8 // the bit location within the byte returned from reading the address
 }
 
-func (a ParameterAddress) Add(i int) [3]byte {
+// Add adds i to the Address.
+func (a Address) Add(i uint32) [3]byte {
 	if i == 0 {
 		return a.Address
 	}
 
 	addr := []byte{0x00, a.Address[0], a.Address[1], a.Address[2]}
-	binary.BigEndian.PutUint32(addr, binary.BigEndian.Uint32(addr)+1)
+	binary.BigEndian.PutUint32(addr, binary.BigEndian.Uint32(addr)+i)
 	return [3]byte{addr[1], addr[2], addr[3]}
 }
 
@@ -59,7 +61,7 @@ type ParameterValue struct {
 	Unit  units.Unit
 }
 
-// ConvertTo converts a parameter value from its current unit to the given unit.
+// ConvertTo converts a ParameterValue from its current unit to the given unit.
 func (v ParameterValue) ConvertTo(u units.Unit) (*ParameterValue, error) {
 	if u == v.Unit {
 		return &ParameterValue{v.Value, v.Unit}, nil
@@ -73,6 +75,10 @@ func (v ParameterValue) ConvertTo(u units.Unit) (*ParameterValue, error) {
 	return &ParameterValue{Value: val, Unit: u}, nil
 }
 
+// SafeConvertTo returns the ParameterValue converted to the
+// desired unit. If the conversion fails, the ParameterValue will
+// have 0 as the Value. This is useful if you don't care whether
+// or not the conversion is successful.
 func (v ParameterValue) SafeConvertTo(u units.Unit) ParameterValue {
 	pv, _ := v.ConvertTo(u)
 	if pv != nil {
@@ -81,6 +87,8 @@ func (v ParameterValue) SafeConvertTo(u units.Unit) ParameterValue {
 	return ParameterValue{Unit: u}
 }
 
+// AvailableDerivedParameters returns the DerivedParameters
+// that are available based on the provided Parameters.
 func AvailableDerivedParameters(params []Parameter) []DerivedParameter {
 	lookup := make(map[string]Parameter)
 	for _, p := range params {
@@ -112,7 +120,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P1",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x7},
 			Length:  1,
 		},
@@ -127,7 +135,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P2",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x8},
 			Length:  1,
 		},
@@ -142,7 +150,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P3",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x9},
 			Length:  1,
 		},
@@ -157,7 +165,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P4",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xa},
 			Length:  1,
 		},
@@ -172,7 +180,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P5",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xb},
 			Length:  1,
 		},
@@ -187,7 +195,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P6",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xc},
 			Length:  1,
 		},
@@ -202,7 +210,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P7-Pressure value calculated from the manifold absolute pressure sensor (absolute value)",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xd},
 			Length:  1,
 		},
@@ -217,7 +225,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P8",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xe},
 			Length:  2,
 		},
@@ -232,7 +240,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P9",
 		CapabilityByteIndex: 9,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x10},
 			Length:  1,
 		},
@@ -247,7 +255,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P10",
 		CapabilityByteIndex: 9,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x11},
 			Length:  1,
 		},
@@ -262,7 +270,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P11",
 		CapabilityByteIndex: 9,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x12},
 			Length:  1,
 		},
@@ -277,7 +285,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P12",
 		CapabilityByteIndex: 9,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x13},
 			Length:  2,
 		},
@@ -292,7 +300,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P13-Engine throttle opening angle.",
 		CapabilityByteIndex: 9,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x15},
 			Length:  1,
 		},
@@ -307,7 +315,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P14",
 		CapabilityByteIndex: 9,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x16},
 			Length:  2,
 		},
@@ -322,7 +330,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P15",
 		CapabilityByteIndex: 9,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x18},
 			Length:  2,
 		},
@@ -337,7 +345,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P16",
 		CapabilityByteIndex: 9,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x1a},
 			Length:  2,
 		},
@@ -352,7 +360,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P17",
 		CapabilityByteIndex: 10,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x1c},
 			Length:  1,
 		},
@@ -367,7 +375,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P18",
 		CapabilityByteIndex: 10,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x1d},
 			Length:  1,
 		},
@@ -382,7 +390,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P19",
 		CapabilityByteIndex: 10,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x1e},
 			Length:  1,
 		},
@@ -397,7 +405,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P20",
 		CapabilityByteIndex: 10,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x1f},
 			Length:  1,
 		},
@@ -412,7 +420,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P21-This parameter includes injector latency.",
 		CapabilityByteIndex: 10,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x20},
 			Length:  1,
 		},
@@ -427,7 +435,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P22-This parameter includes injector latency.",
 		CapabilityByteIndex: 10,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x21},
 			Length:  1,
 		},
@@ -442,7 +450,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P23-Retard amount when knocking has occurred. Partial learned value of the learned ignition timing.",
 		CapabilityByteIndex: 10,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x22},
 			Length:  1,
 		},
@@ -457,7 +465,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P24",
 		CapabilityByteIndex: 10,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x23},
 			Length:  1,
 		},
@@ -472,7 +480,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P25-Manifold Absolute Pressure [P7] minus current Atmospheric Pressure [P24].",
 		CapabilityByteIndex: 11,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x24},
 			Length:  1,
 		},
@@ -487,7 +495,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P26",
 		CapabilityByteIndex: 11,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x25},
 			Length:  1,
 		},
@@ -502,7 +510,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P27",
 		CapabilityByteIndex: 11,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x26},
 			Length:  1,
 		},
@@ -517,7 +525,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P28",
 		CapabilityByteIndex: 11,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x27},
 			Length:  1,
 		},
@@ -532,7 +540,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P29-Advance or retard amount when knocking has occurred.",
 		CapabilityByteIndex: 11,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x28},
 			Length:  1,
 		},
@@ -547,7 +555,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P30-Accelerator pedal angle.",
 		CapabilityByteIndex: 11,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x29},
 			Length:  1,
 		},
@@ -562,7 +570,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P31",
 		CapabilityByteIndex: 11,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x2a},
 			Length:  1,
 		},
@@ -577,7 +585,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P32",
 		CapabilityByteIndex: 11,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x2b},
 			Length:  1,
 		},
@@ -592,7 +600,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P33",
 		CapabilityByteIndex: 12,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x2c},
 			Length:  1,
 		},
@@ -607,7 +615,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P34",
 		CapabilityByteIndex: 12,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x2d},
 			Length:  1,
 		},
@@ -622,7 +630,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P35",
 		CapabilityByteIndex: 12,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x2e},
 			Length:  1,
 		},
@@ -637,7 +645,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P36-Trubo Control Valve Duty Cycle",
 		CapabilityByteIndex: 12,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x30},
 			Length:  1,
 		},
@@ -652,7 +660,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P37",
 		CapabilityByteIndex: 12,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x31},
 			Length:  1,
 		},
@@ -667,7 +675,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P38",
 		CapabilityByteIndex: 12,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x32},
 			Length:  1,
 		},
@@ -682,7 +690,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P39",
 		CapabilityByteIndex: 12,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x33},
 			Length:  1,
 		},
@@ -697,7 +705,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P40",
 		CapabilityByteIndex: 13,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x34},
 			Length:  1,
 		},
@@ -712,7 +720,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P41",
 		CapabilityByteIndex: 13,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x35},
 			Length:  1,
 		},
@@ -727,7 +735,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P42",
 		CapabilityByteIndex: 13,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x36},
 			Length:  1,
 		},
@@ -742,7 +750,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P43",
 		CapabilityByteIndex: 13,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x37},
 			Length:  1,
 		},
@@ -757,7 +765,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P44",
 		CapabilityByteIndex: 13,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x38},
 			Length:  1,
 		},
@@ -772,7 +780,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P45",
 		CapabilityByteIndex: 13,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x39},
 			Length:  1,
 		},
@@ -787,7 +795,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P46",
 		CapabilityByteIndex: 13,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x3a},
 			Length:  1,
 		},
@@ -802,7 +810,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P47",
 		CapabilityByteIndex: 13,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x3b},
 			Length:  1,
 		},
@@ -817,7 +825,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P48",
 		CapabilityByteIndex: 14,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x3c},
 			Length:  1,
 		},
@@ -832,7 +840,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P49",
 		CapabilityByteIndex: 14,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x3d},
 			Length:  1,
 		},
@@ -847,7 +855,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P50",
 		CapabilityByteIndex: 14,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x3e},
 			Length:  1,
 		},
@@ -862,7 +870,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P51",
 		CapabilityByteIndex: 14,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x3f},
 			Length:  1,
 		},
@@ -877,7 +885,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P52",
 		CapabilityByteIndex: 14,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x40},
 			Length:  1,
 		},
@@ -892,7 +900,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P53",
 		CapabilityByteIndex: 14,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x41},
 			Length:  1,
 		},
@@ -907,7 +915,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P54",
 		CapabilityByteIndex: 14,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x42},
 			Length:  1,
 		},
@@ -922,7 +930,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P55",
 		CapabilityByteIndex: 14,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x43},
 			Length:  1,
 		},
@@ -937,7 +945,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P56",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x44},
 			Length:  1,
 		},
@@ -952,7 +960,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P57",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x45},
 			Length:  1,
 		},
@@ -967,7 +975,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P58",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x46},
 			Length:  1,
 		},
@@ -982,7 +990,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P59",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x47},
 			Length:  1,
 		},
@@ -997,7 +1005,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P60",
 		CapabilityByteIndex: 16,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x4a},
 			Length:  1,
 		},
@@ -1012,7 +1020,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P61",
 		CapabilityByteIndex: 17,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x53},
 			Length:  1,
 		},
@@ -1027,7 +1035,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P62",
 		CapabilityByteIndex: 17,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x54},
 			Length:  1,
 		},
@@ -1042,7 +1050,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P63",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xce},
 			Length:  1,
 		},
@@ -1057,7 +1065,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P64",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xcf},
 			Length:  1,
 		},
@@ -1072,7 +1080,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P65",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xd0},
 			Length:  1,
 		},
@@ -1087,7 +1095,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P66",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xd1},
 			Length:  1,
 		},
@@ -1102,7 +1110,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P67",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xd2},
 			Length:  1,
 		},
@@ -1117,7 +1125,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P68",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xd3},
 			Length:  1,
 		},
@@ -1132,7 +1140,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P69",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xd8},
 			Length:  1,
 		},
@@ -1147,7 +1155,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P70",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xd9},
 			Length:  1,
 		},
@@ -1162,7 +1170,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P71",
 		CapabilityByteIndex: 38,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xfa},
 			Length:  1,
 		},
@@ -1177,7 +1185,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P72",
 		CapabilityByteIndex: 38,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xfb},
 			Length:  1,
 		},
@@ -1192,7 +1200,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P73",
 		CapabilityByteIndex: 40,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x0},
 			Length:  1,
 		},
@@ -1207,7 +1215,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P74",
 		CapabilityByteIndex: 40,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x1},
 			Length:  1,
 		},
@@ -1222,7 +1230,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P75",
 		CapabilityByteIndex: 40,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x2},
 			Length:  1,
 		},
@@ -1237,7 +1245,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P76",
 		CapabilityByteIndex: 40,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x3},
 			Length:  1,
 		},
@@ -1252,7 +1260,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P77",
 		CapabilityByteIndex: 40,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x4},
 			Length:  1,
 		},
@@ -1267,7 +1275,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P78",
 		CapabilityByteIndex: 40,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x5},
 			Length:  1,
 		},
@@ -1282,7 +1290,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P79-Exhaust gas temperature reading.",
 		CapabilityByteIndex: 40,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x6},
 			Length:  1,
 		},
@@ -1297,7 +1305,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P80",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x8},
 			Length:  1,
 		},
@@ -1312,7 +1320,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P81",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x9},
 			Length:  1,
 		},
@@ -1327,7 +1335,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P82",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xa},
 			Length:  1,
 		},
@@ -1342,7 +1350,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P83",
 		CapabilityByteIndex: 43,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x18},
 			Length:  1,
 		},
@@ -1357,7 +1365,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P84",
 		CapabilityByteIndex: 43,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x19},
 			Length:  1,
 		},
@@ -1372,7 +1380,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P85",
 		CapabilityByteIndex: 43,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x1a},
 			Length:  1,
 		},
@@ -1387,7 +1395,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P86",
 		CapabilityByteIndex: 43,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x1b},
 			Length:  1,
 		},
@@ -1402,7 +1410,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P87",
 		CapabilityByteIndex: 43,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x1c},
 			Length:  1,
 		},
@@ -1417,7 +1425,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P88",
 		CapabilityByteIndex: 43,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x1d},
 			Length:  1,
 		},
@@ -1432,7 +1440,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P89",
 		CapabilityByteIndex: 15,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xd0},
 			Length:  1,
 		},
@@ -1447,7 +1455,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P90",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xf9},
 			Length:  1,
 		},
@@ -1462,7 +1470,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P91",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x99},
 			Length:  1,
 		},
@@ -1477,7 +1485,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P92",
 		CapabilityByteIndex: 12,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x2f},
 			Length:  1,
 		},
@@ -1492,7 +1500,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P93",
 		CapabilityByteIndex: 16,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x48},
 			Length:  1,
 		},
@@ -1507,7 +1515,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P94-0=-60C/-76F,1=-60C/-76F,2=-51C/-60F,3=-45C/-49F,4=-40C/-40F,5=-37C/-35F,6=-34C/-29F,etc",
 		CapabilityByteIndex: 16,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x49},
 			Length:  1,
 		},
@@ -1522,7 +1530,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P95",
 		CapabilityByteIndex: 16,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x4b},
 			Length:  1,
 		},
@@ -1537,7 +1545,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P96",
 		CapabilityByteIndex: 16,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x4c},
 			Length:  1,
 		},
@@ -1552,7 +1560,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P97",
 		CapabilityByteIndex: 16,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x4d},
 			Length:  1,
 		},
@@ -1567,7 +1575,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P98",
 		CapabilityByteIndex: 16,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x4e},
 			Length:  1,
 		},
@@ -1582,7 +1590,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P99",
 		CapabilityByteIndex: 16,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x4f},
 			Length:  1,
 		},
@@ -1597,7 +1605,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P100",
 		CapabilityByteIndex: 17,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x50},
 			Length:  1,
 		},
@@ -1612,7 +1620,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P101",
 		CapabilityByteIndex: 17,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x51},
 			Length:  1,
 		},
@@ -1627,7 +1635,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P102",
 		CapabilityByteIndex: 17,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x52},
 			Length:  1,
 		},
@@ -1642,7 +1650,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P103",
 		CapabilityByteIndex: 17,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x55},
 			Length:  1,
 		},
@@ -1657,7 +1665,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P104",
 		CapabilityByteIndex: 17,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x56},
 			Length:  1,
 		},
@@ -1672,7 +1680,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P105",
 		CapabilityByteIndex: 17,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x57},
 			Length:  1,
 		},
@@ -1687,7 +1695,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P106",
 		CapabilityByteIndex: 18,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x58},
 			Length:  1,
 		},
@@ -1702,7 +1710,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P107",
 		CapabilityByteIndex: 18,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x59},
 			Length:  1,
 		},
@@ -1717,7 +1725,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P108",
 		CapabilityByteIndex: 18,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x5a},
 			Length:  1,
 		},
@@ -1732,7 +1740,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P109",
 		CapabilityByteIndex: 18,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x5b},
 			Length:  1,
 		},
@@ -1747,7 +1755,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P110",
 		CapabilityByteIndex: 18,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x5c},
 			Length:  1,
 		},
@@ -1762,7 +1770,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P111",
 		CapabilityByteIndex: 18,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x5d},
 			Length:  1,
 		},
@@ -1777,7 +1785,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P112",
 		CapabilityByteIndex: 18,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x5e},
 			Length:  1,
 		},
@@ -1792,7 +1800,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P113",
 		CapabilityByteIndex: 18,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x5f},
 			Length:  1,
 		},
@@ -1807,7 +1815,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P114-0=---,1=S,2=S#,3=I,8=S#,16=I",
 		CapabilityByteIndex: 38,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x6a},
 			Length:  1,
 		},
@@ -1822,7 +1830,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P115",
 		CapabilityByteIndex: 38,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x6b},
 			Length:  1,
 		},
@@ -1837,7 +1845,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P116",
 		CapabilityByteIndex: 40,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x7},
 			Length:  1,
 		},
@@ -1852,7 +1860,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P117",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xb},
 			Length:  1,
 		},
@@ -1867,7 +1875,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P118",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xc},
 			Length:  1,
 		},
@@ -1882,7 +1890,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P119",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xd},
 			Length:  1,
 		},
@@ -1897,7 +1905,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P120-Estimated odometer - increments every 2km",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe},
 			Length:  2,
 		},
@@ -1912,7 +1920,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P121",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x72},
 			Length:  2,
 		},
@@ -1927,7 +1935,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P122",
 		CapabilityByteIndex: 42,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x13},
 			Length:  1,
 		},
@@ -1942,7 +1950,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P123",
 		CapabilityByteIndex: 42,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x14},
 			Length:  1,
 		},
@@ -1957,7 +1965,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P124",
 		CapabilityByteIndex: 42,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x15},
 			Length:  1,
 		},
@@ -1972,7 +1980,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P125",
 		CapabilityByteIndex: 42,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x16},
 			Length:  1,
 		},
@@ -1987,7 +1995,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P126",
 		CapabilityByteIndex: 42,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x17},
 			Length:  1,
 		},
@@ -2002,7 +2010,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P127",
 		CapabilityByteIndex: 43,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x1e},
 			Length:  1,
 		},
@@ -2017,7 +2025,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P128",
 		CapabilityByteIndex: 50,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x40},
 			Length:  1,
 		},
@@ -2032,7 +2040,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P129",
 		CapabilityByteIndex: 50,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x41},
 			Length:  1,
 		},
@@ -2047,7 +2055,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P130",
 		CapabilityByteIndex: 50,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x42},
 			Length:  1,
 		},
@@ -2062,7 +2070,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P131",
 		CapabilityByteIndex: 50,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x43},
 			Length:  1,
 		},
@@ -2077,7 +2085,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P132",
 		CapabilityByteIndex: 50,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x44},
 			Length:  1,
 		},
@@ -2092,7 +2100,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P133",
 		CapabilityByteIndex: 50,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x45},
 			Length:  1,
 		},
@@ -2107,7 +2115,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P134",
 		CapabilityByteIndex: 50,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x46},
 			Length:  1,
 		},
@@ -2122,7 +2130,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P135",
 		CapabilityByteIndex: 50,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x47},
 			Length:  1,
 		},
@@ -2137,7 +2145,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P136",
 		CapabilityByteIndex: 51,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x48},
 			Length:  1,
 		},
@@ -2152,7 +2160,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P137",
 		CapabilityByteIndex: 51,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x49},
 			Length:  1,
 		},
@@ -2167,7 +2175,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P138",
 		CapabilityByteIndex: 51,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x4a},
 			Length:  1,
 		},
@@ -2182,7 +2190,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P139",
 		CapabilityByteIndex: 51,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x4b},
 			Length:  1,
 		},
@@ -2197,7 +2205,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P140",
 		CapabilityByteIndex: 51,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x4c},
 			Length:  1,
 		},
@@ -2212,7 +2220,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P141",
 		CapabilityByteIndex: 51,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x4d},
 			Length:  1,
 		},
@@ -2227,7 +2235,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P142",
 		CapabilityByteIndex: 51,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x4e},
 			Length:  1,
 		},
@@ -2242,7 +2250,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P143",
 		CapabilityByteIndex: 51,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x4f},
 			Length:  1,
 		},
@@ -2257,7 +2265,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P144",
 		CapabilityByteIndex: 52,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x3c},
 			Length:  1,
 		},
@@ -2272,7 +2280,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P145",
 		CapabilityByteIndex: 52,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x3d},
 			Length:  1,
 		},
@@ -2287,7 +2295,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P146",
 		CapabilityByteIndex: 52,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x3e},
 			Length:  1,
 		},
@@ -2302,7 +2310,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P147",
 		CapabilityByteIndex: 52,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x3f},
 			Length:  1,
 		},
@@ -2317,7 +2325,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P148-signed 16 bit value returned",
 		CapabilityByteIndex: 52,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x5a},
 			Length:  1,
 		},
@@ -2332,7 +2340,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P149",
 		CapabilityByteIndex: 52,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x85},
 			Length:  1,
 		},
@@ -2347,7 +2355,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P150",
 		CapabilityByteIndex: 52,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x86},
 			Length:  1,
 		},
@@ -2362,7 +2370,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P151",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xef},
 			Length:  1,
 		},
@@ -2377,7 +2385,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P152",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xf8},
 			Length:  1,
 		},
@@ -2392,7 +2400,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P153-Value of only the whole learning value in the ignition timing learning value.",
 		CapabilityByteIndex: 55,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0xf9},
 			Length:  1,
 		},
@@ -2407,7 +2415,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P154",
 		CapabilityByteIndex: 59,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x9a},
 			Length:  1,
 		},
@@ -2422,7 +2430,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P155",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe1},
 			Length:  1,
 		},
@@ -2437,7 +2445,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P156",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe2},
 			Length:  2,
 		},
@@ -2452,7 +2460,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P157",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe4},
 			Length:  1,
 		},
@@ -2467,7 +2475,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P158",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe5},
 			Length:  1,
 		},
@@ -2482,7 +2490,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P159",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe6},
 			Length:  1,
 		},
@@ -2497,7 +2505,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P160",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe7},
 			Length:  1,
 		},
@@ -2512,7 +2520,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P161",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe8},
 			Length:  1,
 		},
@@ -2527,7 +2535,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P162",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xe9},
 			Length:  1,
 		},
@@ -2542,7 +2550,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P163",
 		CapabilityByteIndex: 61,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xea},
 			Length:  1,
 		},
@@ -2557,7 +2565,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P164",
 		CapabilityByteIndex: 61,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xeb},
 			Length:  1,
 		},
@@ -2572,7 +2580,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P165",
 		CapabilityByteIndex: 61,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xec},
 			Length:  1,
 		},
@@ -2587,7 +2595,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P166",
 		CapabilityByteIndex: 61,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xed},
 			Length:  1,
 		},
@@ -2602,7 +2610,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P167",
 		CapabilityByteIndex: 61,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xee},
 			Length:  2,
 		},
@@ -2617,7 +2625,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P168",
 		CapabilityByteIndex: 61,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xf0},
 			Length:  1,
 		},
@@ -2632,7 +2640,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P169",
 		CapabilityByteIndex: 61,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xf5},
 			Length:  1,
 		},
@@ -2647,7 +2655,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P170-Target current value of suction control valve calculated by the ECM. Applies only to Diesel models.",
 		CapabilityByteIndex: 61,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xf6},
 			Length:  2,
 		},
@@ -2662,7 +2670,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P171-signed 8 bit value returned",
 		CapabilityByteIndex: 62,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xf1},
 			Length:  1,
 		},
@@ -2677,7 +2685,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P172-signed 8 bit value returned",
 		CapabilityByteIndex: 62,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xf2},
 			Length:  1,
 		},
@@ -2692,7 +2700,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P173",
 		CapabilityByteIndex: 62,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xf3},
 			Length:  1,
 		},
@@ -2707,7 +2715,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P174",
 		CapabilityByteIndex: 62,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xf4},
 			Length:  1,
 		},
@@ -2722,7 +2730,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P175-Actual current value of suction control valve. Input to the ECM. Applies only to Diesel models.",
 		CapabilityByteIndex: 63,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xf8},
 			Length:  2,
 		},
@@ -2737,7 +2745,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P176",
 		CapabilityByteIndex: 63,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0xfa},
 			Length:  2,
 		},
@@ -2752,7 +2760,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P177",
 		CapabilityByteIndex: 63,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x4},
 			Length:  2,
 		},
@@ -2767,7 +2775,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P178",
 		CapabilityByteIndex: 63,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x70},
 			Length:  1,
 		},
@@ -2782,7 +2790,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P179",
 		CapabilityByteIndex: 63,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x5d},
 			Length:  1,
 		},
@@ -2797,7 +2805,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P180",
 		CapabilityByteIndex: 63,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x5e},
 			Length:  1,
 		},
@@ -2812,7 +2820,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P181",
 		CapabilityByteIndex: 63,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x5f},
 			Length:  1,
 		},
@@ -2827,7 +2835,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P182",
 		CapabilityByteIndex: 63,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x60},
 			Length:  1,
 		},
@@ -2842,7 +2850,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P183",
 		CapabilityByteIndex: 64,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x71},
 			Length:  1,
 		},
@@ -2857,7 +2865,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P184",
 		CapabilityByteIndex: 64,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x73},
 			Length:  1,
 		},
@@ -2872,7 +2880,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P185-0=High,1=ExHigh,2=Low,3=Mid",
 		CapabilityByteIndex: 64,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x72},
 			Length:  1,
 		},
@@ -2887,7 +2895,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P186",
 		CapabilityByteIndex: 70,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x75},
 			Length:  1,
 		},
@@ -2902,7 +2910,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P187",
 		CapabilityByteIndex: 70,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x76},
 			Length:  1,
 		},
@@ -2917,7 +2925,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P188",
 		CapabilityByteIndex: 70,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x77},
 			Length:  1,
 		},
@@ -2932,7 +2940,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P189",
 		CapabilityByteIndex: 70,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x78},
 			Length:  1,
 		},
@@ -2947,7 +2955,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P190",
 		CapabilityByteIndex: 70,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x79},
 			Length:  1,
 		},
@@ -2962,7 +2970,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P191",
 		CapabilityByteIndex: 70,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x7a},
 			Length:  1,
 		},
@@ -2977,7 +2985,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P192",
 		CapabilityByteIndex: 70,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x7b},
 			Length:  1,
 		},
@@ -2992,7 +3000,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P193",
 		CapabilityByteIndex: 70,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x7c},
 			Length:  1,
 		},
@@ -3007,7 +3015,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P194",
 		CapabilityByteIndex: 71,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x93},
 			Length:  1,
 		},
@@ -3022,7 +3030,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P195",
 		CapabilityByteIndex: 71,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x94},
 			Length:  1,
 		},
@@ -3037,7 +3045,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P196",
 		CapabilityByteIndex: 71,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x95},
 			Length:  1,
 		},
@@ -3052,7 +3060,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P197",
 		CapabilityByteIndex: 71,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x96},
 			Length:  2,
 		},
@@ -3067,7 +3075,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P198",
 		CapabilityByteIndex: 72,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x98},
 			Length:  1,
 		},
@@ -3082,7 +3090,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P199",
 		CapabilityByteIndex: 72,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x99},
 			Length:  1,
 		},
@@ -3097,7 +3105,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P204",
 		CapabilityByteIndex: 72,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x1f},
 			Length:  1,
 		},
@@ -3112,7 +3120,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P205",
 		CapabilityByteIndex: 72,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x9a},
 			Length:  1,
 		},
@@ -3127,7 +3135,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P206",
 		CapabilityByteIndex: 72,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x9b},
 			Length:  2,
 		},
@@ -3142,7 +3150,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P207",
 		CapabilityByteIndex: 72,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x9d},
 			Length:  2,
 		},
@@ -3157,7 +3165,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P208-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 72,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x3d},
 			Length:  1,
 		},
@@ -3172,7 +3180,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P209-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 72,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x3e},
 			Length:  1,
 		},
@@ -3187,7 +3195,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P210-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 73,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x3f},
 			Length:  1,
 		},
@@ -3202,7 +3210,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P211-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 73,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x40},
 			Length:  1,
 		},
@@ -3217,7 +3225,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P212-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 73,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x41},
 			Length:  1,
 		},
@@ -3232,7 +3240,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P213-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 73,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x42},
 			Length:  1,
 		},
@@ -3247,7 +3255,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P214-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 73,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x43},
 			Length:  1,
 		},
@@ -3262,7 +3270,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P215-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 73,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x44},
 			Length:  1,
 		},
@@ -3277,7 +3285,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P216-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 73,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x45},
 			Length:  1,
 		},
@@ -3292,7 +3300,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P217-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 73,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x46},
 			Length:  1,
 		},
@@ -3307,7 +3315,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P218-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 74,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x47},
 			Length:  1,
 		},
@@ -3322,7 +3330,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P219-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 74,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x48},
 			Length:  1,
 		},
@@ -3337,7 +3345,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P220-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 74,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x49},
 			Length:  1,
 		},
@@ -3352,7 +3360,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P221-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 74,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x4a},
 			Length:  1,
 		},
@@ -3367,7 +3375,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P222-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 74,
 		CapabilityBitIndex:  3,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x4b},
 			Length:  1,
 		},
@@ -3382,7 +3390,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P223-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 74,
 		CapabilityBitIndex:  2,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x4c},
 			Length:  1,
 		},
@@ -3397,7 +3405,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P224-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 74,
 		CapabilityBitIndex:  1,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x4d},
 			Length:  1,
 		},
@@ -3412,7 +3420,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P225-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 74,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x4e},
 			Length:  1,
 		},
@@ -3427,7 +3435,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P226-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 76,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x4f},
 			Length:  1,
 		},
@@ -3442,7 +3450,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P227-Injector learning value for idling for PL-CYL, where PL = common rail pressure level, CYL = cylinder number.",
 		CapabilityByteIndex: 76,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x50},
 			Length:  1,
 		},
@@ -3457,7 +3465,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P228",
 		CapabilityByteIndex: 76,
 		CapabilityBitIndex:  5,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x38},
 			Length:  2,
 		},
@@ -3472,7 +3480,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P229",
 		CapabilityByteIndex: 76,
 		CapabilityBitIndex:  4,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x57},
 			Length:  2,
 		},
@@ -3487,7 +3495,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P233-Diesel parameter",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x55},
 			Length:  2,
 		},
@@ -3502,7 +3510,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P234-Volume",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x2f},
 			Length:  2,
 		},
@@ -3517,7 +3525,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P235-Start of injection of pre-injection",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x31},
 			Length:  1,
 		},
@@ -3532,7 +3540,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P236-Cumulative amount of diesel fuel in the engine oil",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0xa2},
 			Length:  1,
 		},
@@ -3547,7 +3555,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P238-Final initial torque including all limiters",
 		CapabilityByteIndex: 60,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x2, 0x32},
 			Length:  2,
 		},
@@ -3562,7 +3570,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P239-This is the fixed amount of timing removed globally - set by the user",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x6f},
 			Length:  1,
 		},
@@ -3577,7 +3585,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P240-This is the fixed amount of idle speed adjustmnet while the A/C is off - set by the user",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x70},
 			Length:  1,
 		},
@@ -3592,7 +3600,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P241-This is the fixed amount of idle speed adjustmnet while the A/C is on - set by the user",
 		CapabilityByteIndex: 8,
 		CapabilityBitIndex:  0,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x0, 0x71},
 			Length:  1,
 		},
@@ -3607,7 +3615,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P244",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  7,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x8},
 			Length:  1,
 		},
@@ -3622,7 +3630,7 @@ var Parameters = map[string]Parameter{
 		Description:         "P245",
 		CapabilityByteIndex: 41,
 		CapabilityBitIndex:  6,
-		Address: &ParameterAddress{
+		Address: &Address{
 			Address: [3]byte{0x0, 0x1, 0x82},
 			Length:  2,
 		},

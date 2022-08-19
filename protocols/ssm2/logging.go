@@ -15,7 +15,7 @@ func LoggingSession(ctx context.Context, conn Connection, params []Parameter,
 	addressesToRead := [][3]byte{}
 	for _, param := range params {
 		for i := 0; i < param.Address.Length; i++ {
-			addressesToRead = append(addressesToRead, param.Address.Add(i))
+			addressesToRead = append(addressesToRead, param.Address.Add(uint32(i)))
 		}
 	}
 

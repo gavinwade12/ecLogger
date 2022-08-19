@@ -2,6 +2,8 @@ module github.com/gavinwade12/ssm2
 
 go 1.18
 
+replace fyne.io/fyne/v2 => "/home/gavin/source/repos/fyne"
+
 require (
 	fyne.io/fyne/v2 v2.2.3
 	github.com/mitchellh/go-homedir v1.1.0

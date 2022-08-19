@@ -94,6 +94,7 @@ func connectionContainer() fyne.CanvasObject {
 		go querySerialPorts()
 		setAvailableParameters(nil)
 		updateLiveLogParameters()
+		tabItems.DisableIndex(2) // disable the Logging tab
 		connectBtn.Enable()
 		connectionState.Set("Disconnected")
 	}
@@ -163,6 +164,7 @@ func initSSM2Connection(ctx context.Context) error {
 			}
 			setAvailableParameters(ecu)
 			updateLiveLogParameters()
+			tabItems.EnableIndex(2) // enable the Logging tab
 			connectionState.Set("Connected")
 			return nil
 		}

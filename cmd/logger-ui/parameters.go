@@ -50,6 +50,7 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 	}
 	sort.Sort(sortableParameters(params))
 
+	tabItems.DisableIndex(1) // disable the Parameters tab
 	paramsContainer.RemoveAll()
 
 	loggedParams := readOnlyLoggedParams()
@@ -129,6 +130,9 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 	time.Sleep(time.Millisecond * 500)
 	paramsContainer.Resize(paramsLayout.MinSize(paramsContainer.Objects))
 	paramsContainer.Refresh()
+	if len(paramsContainer.Objects) > 0 {
+		tabItems.EnableIndex(1) // enable the Parameters tab
+	}
 }
 
 type parameterModel struct {
