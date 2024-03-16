@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,22 +22,50 @@ import (
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
-var liveLogContainer *fyne.Container
+var loggingTab *LoggingTab
 
-func loggingContainer() fyne.CanvasObject {
-	startBtn := widget.NewToolbarAction(theme.MediaPlayIcon(), nil)
-	stopBtn := widget.NewToolbarAction(theme.MediaStopIcon(), nil)
-	toolbar := widget.NewToolbar()
+type LoggingTab struct {
+	toolbar  *widget.Toolbar
+	startBtn *widget.ToolbarAction
+	stopBtn  *widget.ToolbarAction
 
-	startBtn.OnActivated = func() {
+	container *fyne.Container
+
+	loggingProcessors   map[string]func(map[string]ssm2.ParameterValue)
+	loggingProcessorsMu sync.Mutex
+
+	liveLogModels   []*liveLogModel
+	liveLogModelsMu sync.Mutex
+
+	stopLogging context.CancelFunc
+}
+
+func NewLoggingTab() *LoggingTab {
+	loggingTab := &LoggingTab{
+		toolbar:           widget.NewToolbar(),
+		startBtn:          widget.NewToolbarAction(theme.MediaPlayIcon(), nil),
+		stopBtn:           widget.NewToolbarAction(theme.MediaStopIcon(), nil),
+		container:         container.New(layout.NewGridLayout(3)),
+		loggingProcessors: map[string]func(map[string]ssm2.ParameterValue){},
+	}
+
+	loggingTab.startBtn.OnActivated = func() {
 		// open the log file
-		logFileFormat := strings.NewReplacer(
+		logDir := *config.LogDirectory
+		if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
+			logger.Debugf("creating directory for file logging: %v\n", err)
+			return
+		}
+
+		logFileName := strings.NewReplacer(
 			"{{romId}}", hex.EncodeToString(ecu.ROM_ID),
 			"{{timestamp}}", time.Now().Format("20060102_150405"), //yyyyMMdd_hhmmss
 		).Replace(*config.LogFileNameFormat)
 
 		var err error
-		loggingFile, err = os.OpenFile(logFileFormat, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
+		loggingFile, err = os.OpenFile(
+			path.Join(logDir, logFileName),
+			os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
 		if err != nil {
 			logger.Debugf("opening file for logging: %v\n", err)
 			return
@@ -92,13 +121,13 @@ func loggingContainer() fyne.CanvasObject {
 		}
 
 		// remove this button from the toolbar and add the stop button
-		toolbar.Items = []widget.ToolbarItem{}
-		toolbar.Append(stopBtn)
+		loggingTab.toolbar.Items = []widget.ToolbarItem{}
+		loggingTab.toolbar.Append(loggingTab.stopBtn)
 
-		setLoggingProcessor("fileLogging", updateFileLogValues(params, derived))
+		loggingTab.setLoggingProcessor("fileLogging", updateFileLogValues(params, derived))
 	}
-	stopBtn.OnActivated = func() {
-		removeLoggingProcessor("fileLogging")
+	loggingTab.stopBtn.OnActivated = func() {
+		loggingTab.removeLoggingProcessor("fileLogging")
 		loggingFile.Close()
 		loggingFile = nil
 
@@ -116,32 +145,30 @@ func loggingContainer() fyne.CanvasObject {
 		}
 
 		// remove this button from the toolbar and add the start button
-		toolbar.Items = []widget.ToolbarItem{}
-		toolbar.Append(startBtn)
+		loggingTab.toolbar.Items = []widget.ToolbarItem{}
+		loggingTab.toolbar.Append(loggingTab.startBtn)
 	}
-	toolbar.Append(startBtn)
 
-	liveLogContainer = container.New(layout.NewGridLayout(3))
-	return container.NewBorder(toolbar, nil, nil, nil, container.NewVScroll(liveLogContainer))
+	loggingTab.loggingProcessors["liveLogModels"] = loggingTab.updateLiveLogModelValues
+	loggingTab.onLoggedParametersChanged()
+
+	return loggingTab
 }
 
-var (
-	loggingProcessors = map[string]func(map[string]ssm2.ParameterValue){
-		"liveLogModels": updateLiveLogModelValues,
-	}
-	loggingProcessorsMu sync.Mutex
-)
-
-func setLoggingProcessor(key string, p func(map[string]ssm2.ParameterValue)) {
-	loggingProcessorsMu.Lock()
-	defer loggingProcessorsMu.Unlock()
-	loggingProcessors[key] = p
+func (t *LoggingTab) Container() fyne.CanvasObject {
+	return container.NewBorder(t.toolbar, nil, nil, nil, container.NewVScroll(t.container))
 }
 
-func removeLoggingProcessor(key string) {
-	loggingProcessorsMu.Lock()
-	defer loggingProcessorsMu.Unlock()
-	delete(loggingProcessors, key)
+func (t *LoggingTab) setLoggingProcessor(key string, p func(map[string]ssm2.ParameterValue)) {
+	t.loggingProcessorsMu.Lock()
+	defer t.loggingProcessorsMu.Unlock()
+	t.loggingProcessors[key] = p
+}
+
+func (t *LoggingTab) removeLoggingProcessor(key string) {
+	t.loggingProcessorsMu.Lock()
+	defer t.loggingProcessorsMu.Unlock()
+	delete(t.loggingProcessors, key)
 }
 
 type liveLogModel struct {
@@ -186,24 +213,19 @@ func (m *liveLogModel) Update(val ssm2.ParameterValue) {
 	}
 }
 
-var (
-	liveLogModels   []*liveLogModel
-	liveLogModelsMu sync.Mutex
-)
+func (t *LoggingTab) updateLiveLogParameters() {
+	loggingTab.container.RemoveAll()
 
-func updateLiveLogParameters() {
-	liveLogContainer.RemoveAll()
-
-	if stopLogging != nil {
-		stopLogging()
-		stopLogging = nil
+	if t.stopLogging != nil {
+		t.stopLogging()
+		t.stopLogging = nil
 	}
 
-	liveLogModelsMu.Lock()
-	liveLogModels = []*liveLogModel{}
+	t.liveLogModelsMu.Lock()
+	t.liveLogModels = []*liveLogModel{}
 	if conn == nil {
-		liveLogModelsMu.Unlock()
-		liveLogContainer.Refresh()
+		t.liveLogModelsMu.Unlock()
+		loggingTab.container.Refresh()
 		return
 	}
 
@@ -220,16 +242,16 @@ func updateLiveLogParameters() {
 			name = ssm2.Parameters[id].Name
 		}
 
-		liveLogModels = append(liveLogModels, newLiveLogModel(id, name))
+		t.liveLogModels = append(t.liveLogModels, newLiveLogModel(id, name))
 	}
-	sort.Sort(sortableLiveLogModels(liveLogModels))
-	liveLogModelsLen := len(liveLogModels)
-	liveLogModelsMu.Unlock()
+	sort.Sort(sortableLiveLogModels(t.liveLogModels))
+	liveLogModelsLen := len(t.liveLogModels)
+	t.liveLogModelsMu.Unlock()
 
-	for _, m := range liveLogModels {
+	for _, m := range t.liveLogModels {
 		label := widget.NewLabel(m.Name)
 		label.Wrapping = fyne.TextWrapWord
-		liveLogContainer.Objects = append(liveLogContainer.Objects,
+		t.container.Objects = append(t.container.Objects,
 			container.NewVBox(
 				label,
 				container.NewHBox(
@@ -244,31 +266,29 @@ func updateLiveLogParameters() {
 			))
 	}
 
-	liveLogContainer.Refresh()
+	t.container.Refresh()
 
 	if liveLogModelsLen > 0 {
 		var ctx context.Context
-		ctx, stopLogging = context.WithCancel(context.Background())
-		go startLogging(ctx)
+		ctx, t.stopLogging = context.WithCancel(context.Background())
+
+		go t.startLogging(ctx)
 	}
 }
 
-var stopLogging context.CancelFunc
-
-func startLogging(ctx context.Context) {
-	params, derivedParams := getCurrentLoggedParamLists()
-
+func (t *LoggingTab) startLogging(ctx context.Context) {
 	var (
-		session <-chan map[string]ssm2.ParameterValue
-		err     error
+		session               <-chan map[string]ssm2.ParameterValue
+		err                   error
+		params, derivedParams = getCurrentLoggedParamLists()
 	)
 	for {
 		session, err = ssm2.LoggingSession(ctx, conn, params, derivedParams)
-		if err != nil {
-			logger.Debug(err.Error())
-		} else {
+		if err == nil {
 			break
 		}
+
+		logger.Debug(err.Error())
 	}
 
 	for {
@@ -277,7 +297,7 @@ func startLogging(ctx context.Context) {
 			return
 		case result := <-session:
 			if result == nil {
-				updateLiveLogParameters()
+				t.updateLiveLogParameters()
 				return
 			}
 
@@ -297,21 +317,34 @@ func startLogging(ctx context.Context) {
 				result[id] = *vval
 			}
 
-			loggingProcessorsMu.Lock()
-			for _, p := range loggingProcessors {
+			t.loggingProcessorsMu.Lock()
+			for _, p := range t.loggingProcessors {
 				p(result)
 			}
-			loggingProcessorsMu.Unlock()
+			t.loggingProcessorsMu.Unlock()
 		}
 	}
 }
 
-func updateLiveLogModelValues(values map[string]ssm2.ParameterValue) {
-	liveLogModelsMu.Lock()
-	for _, m := range liveLogModels {
+func (t *LoggingTab) onLoggedParametersChanged() {
+	loggedParams := readOnlyLoggedParams()
+	if len(loggedParams) > 0 {
+		if len(t.toolbar.Items) == 0 {
+			t.toolbar.Append(t.startBtn)
+		}
+	} else {
+		if len(t.toolbar.Items) > 0 {
+			t.toolbar.Items = []widget.ToolbarItem{}
+		}
+	}
+}
+
+func (t *LoggingTab) updateLiveLogModelValues(values map[string]ssm2.ParameterValue) {
+	t.liveLogModelsMu.Lock()
+	for _, m := range t.liveLogModels {
 		m.Update(values[m.Id])
 	}
-	liveLogModelsMu.Unlock()
+	t.liveLogModelsMu.Unlock()
 }
 
 func getCurrentLoggedParamLists() ([]ssm2.Parameter, []ssm2.DerivedParameter) {

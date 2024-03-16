@@ -2,7 +2,6 @@ package main
 
 import (
 	"sort"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -16,7 +15,7 @@ var paramsContainer *fyne.Container
 var paramsLayout fyne.Layout
 
 func parametersContainer() fyne.CanvasObject {
-	paramsLayout = layout.NewGridLayout(4)
+	paramsLayout = layout.NewGridLayoutWithColumns(4)
 	paramsContainer = container.New(paramsLayout)
 	return container.NewVScroll(paramsContainer)
 }
@@ -96,6 +95,7 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 					removeFromLoggedParams(param.Id)
 				}
 			}
+			loggingTab.onLoggedParametersChanged()
 		})
 		liveLogCheck := widget.NewCheck("Live Log", func(b bool) {
 			if b {
@@ -112,22 +112,20 @@ func setAvailableParameters(ecu *ssm2.ECU) {
 					removeFromLoggedParams(param.Id)
 				}
 			}
-			updateLiveLogParameters()
+			loggingTab.onLoggedParametersChanged()
+			loggingTab.updateLiveLogParameters()
 		})
 		fileLogCheck.Checked = loggedParams[param.Id] != nil && loggedParams[param.Id].LogToFile
 		liveLogCheck.Checked = loggedParams[param.Id] != nil && loggedParams[param.Id].LiveLog
 
 		paramsContainer.Objects = append(paramsContainer.Objects,
 			name,
-			fileLogCheck,
-			liveLogCheck,
-			unit,
+			container.NewCenter(fileLogCheck),
+			container.NewCenter(liveLogCheck),
+			container.NewCenter(unit),
 		)
 	}
 
-	// TODO: why do we have to sleep for this to layout correctly?
-	// no sleep = random row height
-	time.Sleep(time.Millisecond * 500)
 	paramsContainer.Resize(paramsLayout.MinSize(paramsContainer.Objects))
 	paramsContainer.Refresh()
 	if len(paramsContainer.Objects) > 0 {

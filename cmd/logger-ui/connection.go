@@ -84,16 +84,16 @@ func connectionContainer() fyne.CanvasObject {
 		}()
 	}
 	disconnectBtn.OnTapped = func() {
-		if stopLogging != nil {
-			stopLogging()
-			stopLogging = nil
+		if loggingTab.stopLogging != nil {
+			loggingTab.stopLogging()
+			loggingTab.stopLogging = nil
 		}
 		conn.Close()
 		conn = nil
 		disconnectBtn.Hide()
 		go querySerialPorts()
 		setAvailableParameters(nil)
-		updateLiveLogParameters()
+		loggingTab.updateLiveLogParameters()
 		tabItems.DisableIndex(2) // disable the Logging tab
 		connectBtn.Enable()
 		connectionState.Set("Disconnected")
@@ -163,7 +163,7 @@ func initSSM2Connection(ctx context.Context) error {
 				continue
 			}
 			setAvailableParameters(ecu)
-			updateLiveLogParameters()
+			loggingTab.updateLiveLogParameters()
 			tabItems.EnableIndex(2) // enable the Logging tab
 			connectionState.Set("Connected")
 			return nil

@@ -48,10 +48,12 @@ func main() {
 	w := a.NewWindow("Logger")
 	w.Resize(fyne.NewSize(800, 400))
 
+	loggingTab = NewLoggingTab()
+
 	tabItems = container.NewAppTabs(
 		container.NewTabItem("Connection", connectionContainer()),
 		container.NewTabItem("Parameters", parametersContainer()),
-		container.NewTabItem("Logging", loggingContainer()),
+		container.NewTabItem("Logging", loggingTab.Container()),
 		container.NewTabItem("Settings", settingsContainer()),
 	)
 	tabItems.DisableIndex(1)
@@ -103,6 +105,13 @@ func loadConfig() error {
 	}
 	if config.UseFakeConnection {
 		openSSM2Connection = fakeOpenFunc
+	}
+	if config.LogDirectory == nil {
+		logDirectory := filepath.Join(ssm2Dir, "logs")
+		config.LogDirectory = &logDirectory
+	}
+	if config.LogFileNameFormat == nil {
+		config.LogFileNameFormat = &defaultLogFileNameFormat
 	}
 	return nil
 }
