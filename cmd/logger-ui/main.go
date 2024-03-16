@@ -5,100 +5,85 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
+	fyneApp "fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"github.com/gavinwade12/ecLogger/units"
+	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/pkg/errors"
 )
 
-var (
-	configDirectoryName      = "ssm2"
-	configFileName           = ".ssm2"
-	defaultLogFileNameFormat = "ssm2_log_{{romId}}_{{timestamp}}.csv"
-	config                   struct {
-		SelectedPort        string
-		LogDirectory        *string
-		LogFileNameFormat   *string
-		LoggedParams        map[string]*loggedParam
-		UseFakeConnection   bool
-		AutoConnect         bool
-		DefaultToLoggingTab bool
-	}
-	loggedParamsMu sync.RWMutex
-)
-
-type loggedParam struct {
-	LogToFile bool
-	LiveLog   bool
-	Derived   bool
-	Unit      units.Unit
-}
-
-var tabItems *container.AppTabs
+var logger = ssm2.DefaultLogger(os.Stdout)
 
 func main() {
-	if err := loadConfig(); err != nil {
+	config, err := loadConfig()
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	a := app.New()
-	w := a.NewWindow("Logger")
-	w.Resize(fyne.NewSize(800, 400))
+	app := &App{
+		config:  config,
+		fyneApp: fyneApp.New(),
+	}
 
-	loggingTab = NewLoggingTab()
-
-	tabItems = container.NewAppTabs(
-		container.NewTabItem("Connection", connectionContainer()),
-		container.NewTabItem("Parameters", parametersContainer()),
-		container.NewTabItem("Logging", loggingTab.Container()),
-		container.NewTabItem("Settings", settingsContainer()),
+	app.ConnectionTab = NewConnectionTab(app)
+	app.ParametersTab = NewParametersTab(app)
+	app.LoggingTab = NewLoggingTab(app)
+	app.SettingsTab = NewSettingsTab(app)
+	app.tabItems = container.NewAppTabs(
+		container.NewTabItem("Connection", app.ConnectionTab.Container()),
+		container.NewTabItem("Parameters", app.ParametersTab.Container()),
+		container.NewTabItem("Logging", app.LoggingTab.Container()),
+		container.NewTabItem("Settings", app.SettingsTab.Container()),
 	)
-	tabItems.DisableIndex(1)
-	tabItems.DisableIndex(2)
-	if config.AutoConnect {
-		go connectBtn.Tapped(&fyne.PointEvent{})
+	app.tabItems.DisableIndex(1)
+	app.tabItems.DisableIndex(2)
+	app.tabItems.SetTabLocation(container.TabLocationLeading)
+
+	window := app.fyneApp.NewWindow("Logger")
+	window.Resize(fyne.NewSize(800, 400))
+	window.SetContent(app.tabItems)
+
+	if app.config.AutoConnect {
+		go app.ConnectionTab.connectBtn.Tapped(&fyne.PointEvent{})
 	}
-	if config.DefaultToLoggingTab {
-		tabItems.SelectIndex(2)
+	if app.config.DefaultToLoggingTab {
+		app.tabItems.SelectIndex(2)
 	}
 
-	tabItems.SetTabLocation(container.TabLocationLeading)
+	window.ShowAndRun()
 
-	w.SetContent(tabItems)
-	w.ShowAndRun()
-
-	if err := saveConfig(); err != nil {
+	if err := saveConfig(*app.config); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func loadConfig() error {
+func loadConfig() (*Config, error) {
 	dir, err := os.UserHomeDir()
 	if err != nil {
-		return errors.Wrap(err, "finding user home directory")
+		return nil, errors.Wrap(err, "finding user home directory")
 	}
 	ssm2Dir := filepath.Join(dir, configDirectoryName)
 
+	var config Config
 	f, err := os.Open(filepath.Join(ssm2Dir, configFileName))
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return errors.Wrap(err, "opening config file")
+			return nil, errors.Wrap(err, "opening config file")
 		}
 
 		logDirectory := filepath.Join(ssm2Dir, "logs")
 		config.LogDirectory = &logDirectory
-		config.LogFileNameFormat = &defaultLogFileNameFormat
+		fileNameFormat := defaultLogFileNameFormat
+		config.LogFileNameFormat = &fileNameFormat
 		config.LoggedParams = make(map[string]*loggedParam)
-		return nil
+		return &config, nil
 	}
 	defer f.Close()
 
 	err = json.NewDecoder(f).Decode(&config)
 	if err != nil {
-		return errors.Wrap(err, "decoding config from file")
+		return nil, errors.Wrap(err, "decoding config from file")
 	}
 	if config.LoggedParams == nil {
 		config.LoggedParams = make(map[string]*loggedParam)
@@ -111,12 +96,13 @@ func loadConfig() error {
 		config.LogDirectory = &logDirectory
 	}
 	if config.LogFileNameFormat == nil {
-		config.LogFileNameFormat = &defaultLogFileNameFormat
+		fileNameFormat := defaultLogFileNameFormat
+		config.LogFileNameFormat = &fileNameFormat
 	}
-	return nil
+	return &config, nil
 }
 
-func saveConfig() error {
+func saveConfig(config Config) error {
 	dir, err := os.UserHomeDir()
 	if err != nil {
 		return errors.Wrap(err, "finding user home directory")

@@ -22,9 +22,9 @@ import (
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
-var loggingTab *LoggingTab
-
 type LoggingTab struct {
+	app *App
+
 	toolbar  *widget.Toolbar
 	startBtn *widget.ToolbarAction
 	stopBtn  *widget.ToolbarAction
@@ -40,8 +40,9 @@ type LoggingTab struct {
 	stopLogging context.CancelFunc
 }
 
-func NewLoggingTab() *LoggingTab {
+func NewLoggingTab(app *App) *LoggingTab {
 	loggingTab := &LoggingTab{
+		app:               app,
 		toolbar:           widget.NewToolbar(),
 		startBtn:          widget.NewToolbarAction(theme.MediaPlayIcon(), nil),
 		stopBtn:           widget.NewToolbarAction(theme.MediaStopIcon(), nil),
@@ -51,16 +52,16 @@ func NewLoggingTab() *LoggingTab {
 
 	loggingTab.startBtn.OnActivated = func() {
 		// open the log file
-		logDir := *config.LogDirectory
+		logDir := *app.config.LogDirectory
 		if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
 			logger.Debugf("creating directory for file logging: %v\n", err)
 			return
 		}
 
 		logFileName := strings.NewReplacer(
-			"{{romId}}", hex.EncodeToString(ecu.ROM_ID),
+			"{{romId}}", hex.EncodeToString(app.ConnectionTab.ecu.ROM_ID),
 			"{{timestamp}}", time.Now().Format("20060102_150405"), //yyyyMMdd_hhmmss
-		).Replace(*config.LogFileNameFormat)
+		).Replace(*app.config.LogFileNameFormat)
 
 		var err error
 		loggingFile, err = os.OpenFile(
@@ -73,7 +74,7 @@ func NewLoggingTab() *LoggingTab {
 
 		// don't allow parameter changes while logging to file
 		// to keep file results consistent
-		for i, o := range paramsContainer.Objects {
+		for i, o := range app.ParametersTab.container.Objects {
 			if i%4 == 0 {
 				continue // skip the first column since it's just text
 			}
@@ -87,8 +88,8 @@ func NewLoggingTab() *LoggingTab {
 
 		// write the file header
 		loggingFile.Write([]byte("Timestamp,"))
-		params, derived := getCurrentLoggedParamLists()
-		loggedParams := readOnlyLoggedParams()
+		params, derived := app.getCurrentLoggedParamLists()
+		loggedParams := app.readOnlyLoggedParams()
 		for i, p := range params {
 			u := p.DefaultUnit
 			lp := loggedParams[p.Id]
@@ -132,7 +133,7 @@ func NewLoggingTab() *LoggingTab {
 		loggingFile = nil
 
 		// re-enable all the parameter input
-		for i, o := range paramsContainer.Objects {
+		for i, o := range app.ParametersTab.container.Objects {
 			if i%4 == 0 {
 				continue // skip the first column since it's just text
 			}
@@ -214,7 +215,7 @@ func (m *liveLogModel) Update(val ssm2.ParameterValue) {
 }
 
 func (t *LoggingTab) updateLiveLogParameters() {
-	loggingTab.container.RemoveAll()
+	t.container.RemoveAll()
 
 	if t.stopLogging != nil {
 		t.stopLogging()
@@ -223,13 +224,13 @@ func (t *LoggingTab) updateLiveLogParameters() {
 
 	t.liveLogModelsMu.Lock()
 	t.liveLogModels = []*liveLogModel{}
-	if conn == nil {
+	if t.app.ConnectionTab.conn == nil {
 		t.liveLogModelsMu.Unlock()
-		loggingTab.container.Refresh()
+		t.container.Refresh()
 		return
 	}
 
-	loggedParams := readOnlyLoggedParams()
+	loggedParams := t.app.readOnlyLoggedParams()
 	for id, param := range loggedParams {
 		if !param.LiveLog {
 			continue
@@ -280,10 +281,10 @@ func (t *LoggingTab) startLogging(ctx context.Context) {
 	var (
 		session               <-chan map[string]ssm2.ParameterValue
 		err                   error
-		params, derivedParams = getCurrentLoggedParamLists()
+		params, derivedParams = t.app.getCurrentLoggedParamLists()
 	)
 	for {
-		session, err = ssm2.LoggingSession(ctx, conn, params, derivedParams)
+		session, err = ssm2.LoggingSession(ctx, t.app.ConnectionTab.conn, params, derivedParams)
 		if err == nil {
 			break
 		}
@@ -302,7 +303,7 @@ func (t *LoggingTab) startLogging(ctx context.Context) {
 			}
 
 			// convert the result values to the configured units
-			loggedParams := readOnlyLoggedParams()
+			loggedParams := t.app.readOnlyLoggedParams()
 			for id, val := range result {
 				lp := loggedParams[id]
 				if lp == nil || lp.Unit == val.Unit {
@@ -327,7 +328,7 @@ func (t *LoggingTab) startLogging(ctx context.Context) {
 }
 
 func (t *LoggingTab) onLoggedParametersChanged() {
-	loggedParams := readOnlyLoggedParams()
+	loggedParams := t.app.readOnlyLoggedParams()
 	if len(loggedParams) > 0 {
 		if len(t.toolbar.Items) == 0 {
 			t.toolbar.Append(t.startBtn)
@@ -345,21 +346,6 @@ func (t *LoggingTab) updateLiveLogModelValues(values map[string]ssm2.ParameterVa
 		m.Update(values[m.Id])
 	}
 	t.liveLogModelsMu.Unlock()
-}
-
-func getCurrentLoggedParamLists() ([]ssm2.Parameter, []ssm2.DerivedParameter) {
-	params := []ssm2.Parameter{}
-	derivedParams := []ssm2.DerivedParameter{}
-	loggedParams := readOnlyLoggedParams()
-	for id, p := range loggedParams {
-		if p.Derived {
-			derivedParams = append(derivedParams, ssm2.DerivedParameters[id])
-		} else {
-			params = append(params, ssm2.Parameters[id])
-		}
-	}
-
-	return params, derivedParams
 }
 
 var loggingFile io.WriteCloser

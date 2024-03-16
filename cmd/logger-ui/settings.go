@@ -6,33 +6,36 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func settingsContainer() fyne.CanvasObject {
-	fakeConnection := binding.BindBool(&config.UseFakeConnection)
-	fakeConnection.AddListener(binding.NewDataListener(func() {
-		val, err := fakeConnection.Get()
-		if err != nil {
-			logger.Debugf("getting fake connection value: %v", err)
-			return
+type SettingsTab struct {
+	form *widget.Form
+}
+
+// a package-level variable so extras can be added in a dev build
+var settingsFormItems = []func(app *App) []*widget.FormItem{
+	func(app *App) []*widget.FormItem {
+		return []*widget.FormItem{
+			widget.NewFormItem("Log Directory", widget.NewEntryWithData(
+				binding.BindString(app.config.LogDirectory))),
+			widget.NewFormItem("Log File Name Format", widget.NewEntryWithData(
+				binding.BindString(app.config.LogFileNameFormat))),
+			widget.NewFormItem("Auto Connect", widget.NewCheckWithData("",
+				binding.BindBool(&app.config.AutoConnect))),
+			widget.NewFormItem("Default to Logging Tab", widget.NewCheckWithData(
+				"", binding.BindBool(&app.config.DefaultToLoggingTab))),
 		}
+	},
+}
 
-		if val {
-			openSSM2Connection = fakeOpenFunc
-		} else {
-			openSSM2Connection = defaultOpenFunc
-		}
-	}))
+func NewSettingsTab(app *App) *SettingsTab {
+	formItems := []*widget.FormItem{}
+	for _, f := range settingsFormItems {
+		formItems = append(formItems, f(app)...)
+	}
+	return &SettingsTab{
+		form: widget.NewForm(formItems...),
+	}
+}
 
-	form := widget.NewForm(
-		widget.NewFormItem("Log Directory", widget.NewEntryWithData(
-			binding.BindString(config.LogDirectory))),
-		widget.NewFormItem("Log File Name Format", widget.NewEntryWithData(
-			binding.BindString(config.LogFileNameFormat))),
-		widget.NewFormItem("Auto Connect", widget.NewCheckWithData("",
-			binding.BindBool(&config.AutoConnect))),
-		widget.NewFormItem("Default to Logging Tab", widget.NewCheckWithData(
-			"", binding.BindBool(&config.DefaultToLoggingTab))),
-		widget.NewFormItem("Use Fake Connection", widget.NewCheckWithData("", fakeConnection)),
-	)
-
-	return form
+func (t *SettingsTab) Container() fyne.CanvasObject {
+	return t.form
 }

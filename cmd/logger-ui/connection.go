@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -16,66 +15,80 @@ import (
 	"go.bug.st/serial/enumerator"
 )
 
-var (
-	serialPortSelect *widget.Select
-	connectBtn       *widget.Button
-)
+type ConnectionTab struct {
+	app *App
 
-func connectionContainer() fyne.CanvasObject {
-	serialPortSelect = widget.NewSelect([]string{}, func(s string) {
-		config.SelectedPort = s
-	})
-	go querySerialPorts()
+	serialPortSelect    *widget.Select
+	stopSerialPortQuery chan struct{}
+
+	connectBtn      *widget.Button
+	connectionState binding.String
+
+	container *fyne.Container
+
+	conn ssm2.Connection
+	ecu  *ssm2.ECU
+}
+
+func NewConnectionTab(app *App) *ConnectionTab {
+	connectionTab := &ConnectionTab{
+		app: app,
+		serialPortSelect: widget.NewSelect([]string{}, func(s string) {
+			app.config.SelectedPort = s
+		}),
+		connectBtn:      widget.NewButton("Connect", nil),
+		connectionState: binding.NewString(),
+	}
+	go connectionTab.querySerialPorts()
 
 	form := widget.NewForm(
-		widget.NewFormItem("Port", serialPortSelect),
+		widget.NewFormItem("Port", connectionTab.serialPortSelect),
 	)
 
-	connectionState.Set("Disconnected")
-	connectBtn = widget.NewButton("Connect", nil)
+	connectionTab.connectionState.Set("Disconnected")
 	cancelBtn := widget.NewButton("Cancel", nil)
 	disconnectBtn := widget.NewButton("Disconnect", nil)
-	connectBtn.OnTapped = func() {
+	connectionTab.connectBtn.OnTapped = func() {
 		// disable this button and the select, show the cancel button, and stop
 		// querying for serial port changes
-		connectBtn.Disable()
-		serialPortSelect.Disable()
+		connectionTab.connectBtn.Disable()
+		connectionTab.serialPortSelect.Disable()
 		cancelBtn.Show()
-		stopSerialPortQuery <- struct{}{}
+		connectionTab.stopSerialPortQuery <- struct{}{}
 
 		// set up the cancel button
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelBtn.OnTapped = func() {
 			cancel()
 			cancelBtn.Hide()
-			serialPortSelect.Enable()
-			go querySerialPorts()
-			connectBtn.Enable()
-			connectionState.Set("Disconnected")
+			connectionTab.serialPortSelect.Enable()
+			go connectionTab.querySerialPorts()
+			connectionTab.connectBtn.Enable()
+			connectionTab.connectionState.Set("Disconnected")
 		}
 
 		// try connecting in another goroutine to prevent the UI from locking up
 		go func() {
-			connectionState.Set("Connecting")
-			err := openSSM2Connection()
+			connectionTab.connectionState.Set("Connecting")
+			err := openSSM2Connection(app)
 			if err != nil {
 				cancelBtn.Hide()
-				serialPortSelect.Enable()
-				go querySerialPorts()
-				connectBtn.Enable()
-				connectionState.Set("Disconnected")
+				connectionTab.serialPortSelect.Enable()
+				go connectionTab.querySerialPorts()
+				connectionTab.connectBtn.Enable()
+				connectionTab.connectionState.Set("Disconnected")
 				logger.Debug(err.Error())
 				return
 			}
 
-			connectionState.Set("Initializing")
-			err = initSSM2Connection(ctx)
+			connectionTab.connectionState.Set("Initializing")
+			err = connectionTab.initSSM2Connection(ctx)
 			cancelBtn.Hide()
-			serialPortSelect.Enable()
+			connectionTab.serialPortSelect.Enable()
 			if err != nil {
-				go querySerialPorts()
-				connectBtn.Enable()
-				connectionState.Set("Disconnected")
+				go connectionTab.querySerialPorts()
+				connectionTab.connectBtn.Enable()
+				connectionTab.connectionState.Set("Disconnected")
 				logger.Debug(err.Error())
 			} else {
 				disconnectBtn.Show()
@@ -84,52 +97,56 @@ func connectionContainer() fyne.CanvasObject {
 		}()
 	}
 	disconnectBtn.OnTapped = func() {
-		if loggingTab.stopLogging != nil {
-			loggingTab.stopLogging()
-			loggingTab.stopLogging = nil
+		if app.LoggingTab.stopLogging != nil {
+			app.LoggingTab.stopLogging()
+			app.LoggingTab.stopLogging = nil
 		}
-		conn.Close()
-		conn = nil
+		connectionTab.conn.Close()
+		connectionTab.conn = nil
 		disconnectBtn.Hide()
-		go querySerialPorts()
-		setAvailableParameters(nil)
-		loggingTab.updateLiveLogParameters()
-		tabItems.DisableIndex(2) // disable the Logging tab
-		connectBtn.Enable()
-		connectionState.Set("Disconnected")
+		go connectionTab.querySerialPorts()
+		app.ParametersTab.setAvailableParameters(nil)
+		app.LoggingTab.updateLiveLogParameters()
+		app.tabItems.DisableIndex(2) // disable the Logging tab
+		connectionTab.connectBtn.Enable()
+		connectionTab.connectionState.Set("Disconnected")
 	}
 	cancelBtn.Hide()
 	disconnectBtn.Hide()
 
-	c := container.New(layout.NewVBoxLayout(),
+	connectionTab.container = container.New(layout.NewVBoxLayout(),
 		form,
 		container.New(layout.NewHBoxLayout(),
 			widget.NewLabel("Status: "),
-			widget.NewLabelWithData(connectionState)),
-		connectBtn,
+			widget.NewLabelWithData(connectionTab.connectionState)),
+		connectionTab.connectBtn,
 		cancelBtn,
 		disconnectBtn)
 
-	return c
+	return connectionTab
+}
+
+func (t *ConnectionTab) Container() fyne.CanvasObject {
+	return t.container
 }
 
 var (
-	defaultOpenFunc = func() error {
-		connectionState.Set("Connecting...")
+	defaultOpenFunc = func(app *App) error {
+		app.ConnectionTab.connectionState.Set("Connecting...")
 
-		if config.SelectedPort == "" {
+		if app.config.SelectedPort == "" {
 			return errors.New("a port is required")
 		}
 
-		logger.Debugf("opening serial port %s", config.SelectedPort)
-		sp, err := serial.Open(config.SelectedPort, &serial.Mode{
+		logger.Debugf("opening serial port %s", app.config.SelectedPort)
+		sp, err := serial.Open(app.config.SelectedPort, &serial.Mode{
 			BaudRate: ssm2.ConnectionBaudRate,
 			DataBits: ssm2.ConnectionDataBits,
 			Parity:   serial.NoParity,
 			StopBits: serial.OneStopBit,
 		})
 		if err != nil {
-			return errors.Wrapf(err, "opening serial port '%s'", config.SelectedPort)
+			return errors.Wrapf(err, "opening serial port '%s'", app.config.SelectedPort)
 		}
 
 		if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
@@ -139,42 +156,40 @@ var (
 			return err
 		}
 
-		conn = ssm2.NewConnection(sp, logger)
+		app.ConnectionTab.conn = ssm2.NewConnection(sp, logger)
 		return nil
 	}
-	fakeOpenFunc = func() error {
-		conn = ssm2.NewFakeConnection(time.Millisecond * 50)
+	fakeOpenFunc = func(app *App) error {
+		app.ConnectionTab.conn = ssm2.NewFakeConnection(time.Millisecond * 50)
 		return nil
 	}
 	openSSM2Connection = defaultOpenFunc
 )
 
-func initSSM2Connection(ctx context.Context) error {
+func (t *ConnectionTab) initSSM2Connection(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			conn.Close()
+			t.conn.Close()
 			return ctx.Err()
 		default:
 			var err error
-			ecu, err = conn.InitECU(ctx)
+			t.ecu, err = t.conn.InitECU(ctx)
 			if err != nil {
 				logger.Debug(err.Error())
 				continue
 			}
-			setAvailableParameters(ecu)
-			loggingTab.updateLiveLogParameters()
-			tabItems.EnableIndex(2) // enable the Logging tab
-			connectionState.Set("Connected")
+			t.app.ParametersTab.setAvailableParameters(t.ecu)
+			t.app.LoggingTab.updateLiveLogParameters()
+			t.app.tabItems.EnableIndex(2) // enable the Logging tab
+			t.connectionState.Set("Connected")
 			return nil
 		}
 	}
 }
 
-var stopSerialPortQuery chan struct{}
-
-func querySerialPorts() {
-	stopSerialPortQuery = make(chan struct{})
+func (t *ConnectionTab) querySerialPorts() {
+	t.stopSerialPortQuery = make(chan struct{})
 
 	query := func() {
 		pl, err := enumerator.GetDetailedPortsList()
@@ -188,26 +203,19 @@ func querySerialPorts() {
 			ports[i] = p.Name
 		}
 
-		serialPortSelect.Options = ports
-		serialPortSelect.SetSelected(config.SelectedPort)
-		serialPortSelect.Refresh()
+		t.serialPortSelect.Options = ports
+		t.serialPortSelect.SetSelected(t.app.config.SelectedPort)
+		t.serialPortSelect.Refresh()
 	}
 
 	query()
 
 	for {
 		select {
-		case <-stopSerialPortQuery:
+		case <-t.stopSerialPortQuery:
 			return
 		case <-time.NewTicker(time.Second * 30).C:
 			query()
 		}
 	}
 }
-
-var (
-	connectionState = binding.NewString()
-	logger          = ssm2.DefaultLogger(os.Stdout)
-	conn            ssm2.Connection
-	ecu             *ssm2.ECU
-)
