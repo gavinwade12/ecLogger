@@ -36,6 +36,9 @@ type App struct {
 	ParametersTab *ParametersTab
 	LoggingTab    *LoggingTab
 	SettingsTab   *SettingsTab
+
+	connection ssm2.Connection
+	ecu        *ssm2.ECU
 }
 
 func (a *App) removeFromLoggedParams(key string) {
@@ -91,4 +94,29 @@ func (a *App) getCurrentLoggedParamLists() ([]ssm2.Parameter, []ssm2.DerivedPara
 	}
 
 	return params, derivedParams
+}
+
+func (a *App) onNewConnection(conn ssm2.Connection, ecu *ssm2.ECU) {
+	a.connection = conn
+	a.ecu = ecu
+
+	a.ParametersTab.setAvailableParameters(ecu)
+	a.LoggingTab.updateLiveLogParameters()
+	a.tabItems.EnableIndex(2) // enable the Logging tab
+}
+
+func (a *App) onDisconnect() {
+	if a.LoggingTab.cancelLogging != nil {
+		a.LoggingTab.cancelLogging()
+		a.LoggingTab.cancelLogging = nil
+	}
+
+	a.connection.Close()
+	a.connection = nil
+	a.ecu = nil
+	a.ConnectionTab.onDisconnect()
+
+	a.ParametersTab.setAvailableParameters(nil)
+	a.LoggingTab.updateLiveLogParameters()
+	a.tabItems.DisableIndex(2) // disable the Logging tab
 }

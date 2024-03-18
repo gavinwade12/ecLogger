@@ -151,6 +151,35 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 	}
 }
 
+func (t *ParametersTab) toggleParameterChanges(enable bool) {
+	for i, o := range t.container.Objects {
+		if i%4 == 0 {
+			continue // skip the first column since it's just text
+		}
+
+		traverseObjectAndToggle(enable, o)
+	}
+}
+
+func traverseObjectAndToggle(enable bool, o fyne.CanvasObject) {
+	switch w := o.(type) {
+	case *fyne.Container:
+		for _, oo := range w.Objects {
+			traverseObjectAndToggle(enable, oo)
+		}
+	case fyne.Disableable:
+		toggleEnable(enable, w)
+	}
+}
+
+func toggleEnable(enable bool, o fyne.Disableable) {
+	if enable {
+		o.Enable()
+	} else {
+		o.Disable()
+	}
+}
+
 type parameterModel struct {
 	Id          string
 	Name        string

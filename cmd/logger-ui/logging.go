@@ -37,7 +37,8 @@ type LoggingTab struct {
 	liveLogModels   []*liveLogModel
 	liveLogModelsMu sync.Mutex
 
-	stopLogging context.CancelFunc
+	cancelLogging context.CancelFunc
+	logFile       io.WriteCloser
 }
 
 func NewLoggingTab(app *App) *LoggingTab {
@@ -49,107 +50,8 @@ func NewLoggingTab(app *App) *LoggingTab {
 		container:         container.New(layout.NewGridLayout(3)),
 		loggingProcessors: map[string]func(map[string]ssm2.ParameterValue){},
 	}
-
-	loggingTab.startBtn.OnActivated = func() {
-		// open the log file
-		logDir := *app.config.LogDirectory
-		if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
-			logger.Debugf("creating directory for file logging: %v\n", err)
-			return
-		}
-
-		logFileName := strings.NewReplacer(
-			"{{romId}}", hex.EncodeToString(app.ConnectionTab.ecu.ROM_ID),
-			"{{timestamp}}", time.Now().Format("20060102_150405"), //yyyyMMdd_hhmmss
-		).Replace(*app.config.LogFileNameFormat)
-
-		var err error
-		loggingFile, err = os.OpenFile(
-			path.Join(logDir, logFileName),
-			os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
-		if err != nil {
-			logger.Debugf("opening file for logging: %v\n", err)
-			return
-		}
-
-		// don't allow parameter changes while logging to file
-		// to keep file results consistent
-		for i, o := range app.ParametersTab.container.Objects {
-			if i%4 == 0 {
-				continue // skip the first column since it's just text
-			}
-			switch w := o.(type) {
-			case *widget.Check:
-				w.Disable()
-			case *widget.Select:
-				w.Disable()
-			}
-		}
-
-		// write the file header
-		loggingFile.Write([]byte("Timestamp,"))
-		params, derived := app.getCurrentLoggedParamLists()
-		loggedParams := app.readOnlyLoggedParams()
-		for i, p := range params {
-			u := p.DefaultUnit
-			lp := loggedParams[p.Id]
-			if lp != nil {
-				u = lp.Unit
-			}
-			val := fmt.Sprintf("%s (%s)", p.Name, u)
-
-			if len(derived) > 0 || i < len(params)-1 {
-				val += ","
-			} else {
-				val += "\n"
-			}
-			loggingFile.Write([]byte(val))
-		}
-		for i, p := range derived {
-			u := p.DefaultUnit
-			lp := loggedParams[p.Id]
-			if lp != nil {
-				u = lp.Unit
-			}
-			val := fmt.Sprintf("%s (%s)", p.Name, u)
-
-			if i < len(derived)-1 {
-				val += ","
-			} else {
-				val += "\n"
-			}
-			loggingFile.Write([]byte(val))
-		}
-
-		// remove this button from the toolbar and add the stop button
-		loggingTab.toolbar.Items = []widget.ToolbarItem{}
-		loggingTab.toolbar.Append(loggingTab.stopBtn)
-
-		loggingTab.setLoggingProcessor("fileLogging", updateFileLogValues(params, derived))
-	}
-	loggingTab.stopBtn.OnActivated = func() {
-		loggingTab.removeLoggingProcessor("fileLogging")
-		loggingFile.Close()
-		loggingFile = nil
-
-		// re-enable all the parameter input
-		for i, o := range app.ParametersTab.container.Objects {
-			if i%4 == 0 {
-				continue // skip the first column since it's just text
-			}
-			switch w := o.(type) {
-			case *widget.Check:
-				w.Enable()
-			case *widget.Select:
-				w.Enable()
-			}
-		}
-
-		// remove this button from the toolbar and add the start button
-		loggingTab.toolbar.Items = []widget.ToolbarItem{}
-		loggingTab.toolbar.Append(loggingTab.startBtn)
-	}
-
+	loggingTab.startBtn.OnActivated = loggingTab.startLogging
+	loggingTab.stopBtn.OnActivated = loggingTab.stopLogging
 	loggingTab.loggingProcessors["liveLogModels"] = loggingTab.updateLiveLogModelValues
 	loggingTab.onLoggedParametersChanged()
 
@@ -158,6 +60,94 @@ func NewLoggingTab(app *App) *LoggingTab {
 
 func (t *LoggingTab) Container() fyne.CanvasObject {
 	return container.NewBorder(t.toolbar, nil, nil, nil, container.NewVScroll(t.container))
+}
+
+func (t *LoggingTab) startLogging() {
+	// create the log directory if it doesn't already exist
+	logDir := *t.app.config.LogDirectory
+	if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
+		logger.Debugf("creating directory for file logging: %v\n", err)
+		return
+	}
+
+	// determine the log file name
+	logFileName := strings.NewReplacer(
+		"{{romId}}", hex.EncodeToString(t.app.ecu.ROM_ID),
+		"{{timestamp}}", time.Now().Format("20060102_150405"), //yyyyMMdd_hhmmss
+	).Replace(*t.app.config.LogFileNameFormat)
+
+	// open the log file
+	var err error
+	t.logFile, err = os.OpenFile(
+		path.Join(logDir, logFileName),
+		os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
+	if err != nil {
+		logger.Debugf("opening file for logging: %v\n", err)
+		return
+	}
+
+	// don't allow parameter changes while logging to file
+	// to keep file results consistent
+	t.app.ParametersTab.toggleParameterChanges(false)
+
+	// write the file header
+	params, derived := t.app.getCurrentLoggedParamLists()
+	t.writeLogFileHeader(params, derived)
+
+	// remove the start button from the toolbar and add the stop button
+	t.toolbar.Items = []widget.ToolbarItem{}
+	t.toolbar.Append(t.stopBtn)
+
+	t.setLoggingProcessor("fileLogging", t.updateFileLogValues(params, derived))
+}
+
+func (t *LoggingTab) stopLogging() {
+	// stop the file logging
+	t.removeLoggingProcessor("fileLogging")
+	t.logFile.Close()
+	t.logFile = nil
+
+	// re-enable all the parameter input
+	t.app.ParametersTab.toggleParameterChanges(true)
+
+	// remove the stop button from the toolbar and add the start button
+	t.toolbar.Items = []widget.ToolbarItem{}
+	t.toolbar.Append(t.startBtn)
+}
+
+func (t *LoggingTab) writeLogFileHeader(params []ssm2.Parameter, derived []ssm2.DerivedParameter) {
+	t.logFile.Write([]byte("Timestamp,"))
+	loggedParams := t.app.readOnlyLoggedParams()
+	for i, p := range params {
+		u := p.DefaultUnit
+		lp := loggedParams[p.Id]
+		if lp != nil {
+			u = lp.Unit
+		}
+		val := fmt.Sprintf("%s (%s)", p.Name, u)
+
+		if len(derived) > 0 || i < len(params)-1 {
+			val += ","
+		} else {
+			val += "\n"
+		}
+		t.logFile.Write([]byte(val))
+	}
+	for i, p := range derived {
+		u := p.DefaultUnit
+		lp := loggedParams[p.Id]
+		if lp != nil {
+			u = lp.Unit
+		}
+		val := fmt.Sprintf("%s (%s)", p.Name, u)
+
+		if i < len(derived)-1 {
+			val += ","
+		} else {
+			val += "\n"
+		}
+		t.logFile.Write([]byte(val))
+	}
 }
 
 func (t *LoggingTab) setLoggingProcessor(key string, p func(map[string]ssm2.ParameterValue)) {
@@ -217,14 +207,14 @@ func (m *liveLogModel) Update(val ssm2.ParameterValue) {
 func (t *LoggingTab) updateLiveLogParameters() {
 	t.container.RemoveAll()
 
-	if t.stopLogging != nil {
-		t.stopLogging()
-		t.stopLogging = nil
+	if t.cancelLogging != nil {
+		t.cancelLogging()
+		t.cancelLogging = nil
 	}
 
 	t.liveLogModelsMu.Lock()
 	t.liveLogModels = []*liveLogModel{}
-	if t.app.ConnectionTab.conn == nil {
+	if t.app.connection == nil {
 		t.liveLogModelsMu.Unlock()
 		t.container.Refresh()
 		return
@@ -271,20 +261,20 @@ func (t *LoggingTab) updateLiveLogParameters() {
 
 	if liveLogModelsLen > 0 {
 		var ctx context.Context
-		ctx, t.stopLogging = context.WithCancel(context.Background())
+		ctx, t.cancelLogging = context.WithCancel(context.Background())
 
-		go t.startLogging(ctx)
+		go t.openLoggingSession(ctx)
 	}
 }
 
-func (t *LoggingTab) startLogging(ctx context.Context) {
+func (t *LoggingTab) openLoggingSession(ctx context.Context) {
 	var (
 		session               <-chan map[string]ssm2.ParameterValue
 		err                   error
 		params, derivedParams = t.app.getCurrentLoggedParamLists()
 	)
 	for {
-		session, err = ssm2.LoggingSession(ctx, t.app.ConnectionTab.conn, params, derivedParams)
+		session, err = ssm2.LoggingSession(ctx, t.app.connection, params, derivedParams)
 		if err == nil {
 			break
 		}
@@ -348,9 +338,7 @@ func (t *LoggingTab) updateLiveLogModelValues(values map[string]ssm2.ParameterVa
 	t.liveLogModelsMu.Unlock()
 }
 
-var loggingFile io.WriteCloser
-
-func updateFileLogValues(params []ssm2.Parameter, derived []ssm2.DerivedParameter) func(values map[string]ssm2.ParameterValue) {
+func (t *LoggingTab) updateFileLogValues(params []ssm2.Parameter, derived []ssm2.DerivedParameter) func(values map[string]ssm2.ParameterValue) {
 	order := make([]string, len(params)+len(derived))
 	i := 0
 	for _, p := range params {
@@ -363,7 +351,7 @@ func updateFileLogValues(params []ssm2.Parameter, derived []ssm2.DerivedParamete
 	}
 
 	return func(values map[string]ssm2.ParameterValue) {
-		loggingFile.Write([]byte(time.Now().Format("2006-01-02 15:04:05.999999999") + ",")) // yyyy-MM-dd hh:mm:ss
+		t.logFile.Write([]byte(time.Now().Format("2006-01-02 15:04:05.999999999") + ",")) // yyyy-MM-dd hh:mm:ss
 		for i, id := range order {
 			val := strconv.FormatFloat(float64(values[id].Value), 'f', 4, 32)
 			if i < len(order)-1 {
@@ -371,7 +359,7 @@ func updateFileLogValues(params []ssm2.Parameter, derived []ssm2.DerivedParamete
 			} else {
 				val += "\n"
 			}
-			loggingFile.Write([]byte(val))
+			t.logFile.Write([]byte(val))
 		}
 	}
 }

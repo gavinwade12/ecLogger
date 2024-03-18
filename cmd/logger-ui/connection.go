@@ -25,9 +25,6 @@ type ConnectionTab struct {
 	connectionState binding.String
 
 	container *fyne.Container
-
-	conn ssm2.Connection
-	ecu  *ssm2.ECU
 }
 
 func NewConnectionTab(app *App) *ConnectionTab {
@@ -61,56 +58,12 @@ func NewConnectionTab(app *App) *ConnectionTab {
 		cancelBtn.OnTapped = func() {
 			cancel()
 			cancelBtn.Hide()
-			connectionTab.serialPortSelect.Enable()
-			go connectionTab.querySerialPorts()
-			connectionTab.connectBtn.Enable()
-			connectionTab.connectionState.Set("Disconnected")
 		}
 
 		// try connecting in another goroutine to prevent the UI from locking up
-		go func() {
-			connectionTab.connectionState.Set("Connecting")
-			err := openSSM2Connection(app)
-			if err != nil {
-				cancelBtn.Hide()
-				connectionTab.serialPortSelect.Enable()
-				go connectionTab.querySerialPorts()
-				connectionTab.connectBtn.Enable()
-				connectionTab.connectionState.Set("Disconnected")
-				logger.Debug(err.Error())
-				return
-			}
-
-			connectionTab.connectionState.Set("Initializing")
-			err = connectionTab.initSSM2Connection(ctx)
-			cancelBtn.Hide()
-			connectionTab.serialPortSelect.Enable()
-			if err != nil {
-				go connectionTab.querySerialPorts()
-				connectionTab.connectBtn.Enable()
-				connectionTab.connectionState.Set("Disconnected")
-				logger.Debug(err.Error())
-			} else {
-				disconnectBtn.Show()
-			}
-			cancel()
-		}()
+		go connectionTab.openAndInitConnection(ctx, cancelBtn, disconnectBtn)
 	}
-	disconnectBtn.OnTapped = func() {
-		if app.LoggingTab.stopLogging != nil {
-			app.LoggingTab.stopLogging()
-			app.LoggingTab.stopLogging = nil
-		}
-		connectionTab.conn.Close()
-		connectionTab.conn = nil
-		disconnectBtn.Hide()
-		go connectionTab.querySerialPorts()
-		app.ParametersTab.setAvailableParameters(nil)
-		app.LoggingTab.updateLiveLogParameters()
-		app.tabItems.DisableIndex(2) // disable the Logging tab
-		connectionTab.connectBtn.Enable()
-		connectionTab.connectionState.Set("Disconnected")
-	}
+	disconnectBtn.OnTapped = app.onDisconnect
 	cancelBtn.Hide()
 	disconnectBtn.Hide()
 
@@ -130,58 +83,52 @@ func (t *ConnectionTab) Container() fyne.CanvasObject {
 	return t.container
 }
 
-var (
-	defaultOpenFunc = func(app *App) error {
-		app.ConnectionTab.connectionState.Set("Connecting...")
-
-		if app.config.SelectedPort == "" {
-			return errors.New("a port is required")
+func (t *ConnectionTab) openAndInitConnection(ctx context.Context, cancelBtn, disconnectBtn *widget.Button) {
+	var (
+		cleanup = func() {
+			cancelBtn.Hide()
+			t.serialPortSelect.Enable()
 		}
-
-		logger.Debugf("opening serial port %s", app.config.SelectedPort)
-		sp, err := serial.Open(app.config.SelectedPort, &serial.Mode{
-			BaudRate: ssm2.ConnectionBaudRate,
-			DataBits: ssm2.ConnectionDataBits,
-			Parity:   serial.NoParity,
-			StopBits: serial.OneStopBit,
-		})
-		if err != nil {
-			return errors.Wrapf(err, "opening serial port '%s'", app.config.SelectedPort)
+		onError = func(err error) {
+			cleanup()
+			t.onDisconnect()
+			logger.Debug(err.Error())
 		}
+	)
 
-		if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
-			return errors.Wrap(err, "setting serial port read timeout")
-		}
-		if err != nil {
-			return err
-		}
-
-		app.ConnectionTab.conn = ssm2.NewConnection(sp, logger)
-		return nil
+	t.connectionState.Set("Connecting")
+	conn, err := openSSM2Connection(t.app)
+	if err != nil {
+		onError(err)
+		return
 	}
-	fakeOpenFunc = func(app *App) error {
-		app.ConnectionTab.conn = ssm2.NewFakeConnection(time.Millisecond * 50)
-		return nil
-	}
-	openSSM2Connection = defaultOpenFunc
-)
 
-func (t *ConnectionTab) initSSM2Connection(ctx context.Context) error {
+	t.connectionState.Set("Initializing")
+	err = t.initSSM2Connection(ctx, conn)
+	cleanup()
+	if err != nil {
+		onError(err)
+	} else {
+		disconnectBtn.Show()
+	}
+}
+
+func (t *ConnectionTab) initSSM2Connection(ctx context.Context, conn ssm2.Connection) error {
+	// keep trying to init the connection until we successfully connect
+	// or the context is cancelled
 	for {
 		select {
 		case <-ctx.Done():
-			t.conn.Close()
+			conn.Close()
 			return ctx.Err()
 		default:
-			var err error
-			t.ecu, err = t.conn.InitECU(ctx)
+			ecu, err := conn.InitECU(ctx)
 			if err != nil {
 				logger.Debug(err.Error())
 				continue
 			}
-			t.app.ParametersTab.setAvailableParameters(t.ecu)
-			t.app.LoggingTab.updateLiveLogParameters()
-			t.app.tabItems.EnableIndex(2) // enable the Logging tab
+
+			t.app.onNewConnection(conn, ecu)
 			t.connectionState.Set("Connected")
 			return nil
 		}
@@ -208,8 +155,10 @@ func (t *ConnectionTab) querySerialPorts() {
 		t.serialPortSelect.Refresh()
 	}
 
+	// query now
 	query()
 
+	// and query every 30 seconds until we receive a signal to stop
 	for {
 		select {
 		case <-t.stopSerialPortQuery:
@@ -219,3 +168,44 @@ func (t *ConnectionTab) querySerialPorts() {
 		}
 	}
 }
+
+func (t *ConnectionTab) onDisconnect() {
+	t.serialPortSelect.Enable()
+	go t.querySerialPorts()
+	t.connectBtn.Enable()
+	t.connectionState.Set("Disconnected")
+}
+
+var (
+	defaultOpenFunc = func(app *App) (ssm2.Connection, error) {
+		app.ConnectionTab.connectionState.Set("Connecting...")
+
+		if app.config.SelectedPort == "" {
+			return nil, errors.New("a port is required")
+		}
+
+		logger.Debugf("opening serial port %s", app.config.SelectedPort)
+		sp, err := serial.Open(app.config.SelectedPort, &serial.Mode{
+			BaudRate: ssm2.ConnectionBaudRate,
+			DataBits: ssm2.ConnectionDataBits,
+			Parity:   serial.NoParity,
+			StopBits: serial.OneStopBit,
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "opening serial port '%s'", app.config.SelectedPort)
+		}
+
+		if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
+			return nil, errors.Wrap(err, "setting serial port read timeout")
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		return ssm2.NewConnection(sp, logger), nil
+	}
+	fakeOpenFunc = func(app *App) (ssm2.Connection, error) {
+		return ssm2.NewFakeConnection(time.Millisecond * 50), nil
+	}
+	openSSM2Connection = defaultOpenFunc
+)
