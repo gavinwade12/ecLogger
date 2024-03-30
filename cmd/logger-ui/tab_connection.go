@@ -22,6 +22,8 @@ type ConnectionTab struct {
 	stopSerialPortQuery chan struct{}
 
 	connectBtn      *widget.Button
+	disconnectBtn   *widget.Button
+	cancelBtn       *widget.Button
 	connectionState binding.String
 
 	container *fyne.Container
@@ -34,6 +36,8 @@ func NewConnectionTab(app *App) *ConnectionTab {
 			app.config.SelectedPort = s
 		}),
 		connectBtn:      widget.NewButton("Connect", nil),
+		disconnectBtn:   widget.NewButton("Disconnect", nil),
+		cancelBtn:       widget.NewButton("Cancel", nil),
 		connectionState: binding.NewString(),
 	}
 	go connectionTab.querySerialPorts()
@@ -43,29 +47,11 @@ func NewConnectionTab(app *App) *ConnectionTab {
 	)
 
 	connectionTab.connectionState.Set("Disconnected")
-	cancelBtn := widget.NewButton("Cancel", nil)
-	disconnectBtn := widget.NewButton("Disconnect", nil)
-	connectionTab.connectBtn.OnTapped = func() {
-		// disable this button and the select, show the cancel button, and stop
-		// querying for serial port changes
-		connectionTab.connectBtn.Disable()
-		connectionTab.serialPortSelect.Disable()
-		cancelBtn.Show()
-		connectionTab.stopSerialPortQuery <- struct{}{}
 
-		// set up the cancel button
-		ctx, cancel := context.WithCancel(context.Background())
-		cancelBtn.OnTapped = func() {
-			cancel()
-			cancelBtn.Hide()
-		}
-
-		// try connecting in another goroutine to prevent the UI from locking up
-		go connectionTab.openAndInitConnection(ctx, cancelBtn, disconnectBtn)
-	}
-	disconnectBtn.OnTapped = app.onDisconnect
-	cancelBtn.Hide()
-	disconnectBtn.Hide()
+	connectionTab.connectBtn.OnTapped = connectionTab.OnConnectTapped
+	connectionTab.disconnectBtn.OnTapped = app.OnDisconnect
+	connectionTab.disconnectBtn.Hide()
+	connectionTab.cancelBtn.Hide()
 
 	connectionTab.container = container.New(layout.NewVBoxLayout(),
 		form,
@@ -73,8 +59,8 @@ func NewConnectionTab(app *App) *ConnectionTab {
 			widget.NewLabel("Status: "),
 			widget.NewLabelWithData(connectionTab.connectionState)),
 		connectionTab.connectBtn,
-		cancelBtn,
-		disconnectBtn)
+		connectionTab.cancelBtn,
+		connectionTab.disconnectBtn)
 
 	return connectionTab
 }
@@ -83,10 +69,29 @@ func (t *ConnectionTab) Container() fyne.CanvasObject {
 	return t.container
 }
 
-func (t *ConnectionTab) openAndInitConnection(ctx context.Context, cancelBtn, disconnectBtn *widget.Button) {
+func (t *ConnectionTab) OnConnectTapped() {
+	// disable this button and the select, show the cancel button, and stop
+	// querying for serial port changes
+	t.connectBtn.Disable()
+	t.serialPortSelect.Disable()
+	t.cancelBtn.Show()
+	t.stopSerialPortQuery <- struct{}{}
+
+	// set up the cancel button
+	ctx, cancel := context.WithCancel(context.Background())
+	t.cancelBtn.OnTapped = func() {
+		cancel()
+		t.cancelBtn.Hide()
+	}
+
+	// try connecting in another goroutine to prevent the UI from locking up
+	go t.openAndInitConnection(ctx)
+}
+
+func (t *ConnectionTab) openAndInitConnection(ctx context.Context) {
 	var (
 		cleanup = func() {
-			cancelBtn.Hide()
+			t.cancelBtn.Hide()
 			t.serialPortSelect.Enable()
 		}
 		onError = func(err error) {
@@ -109,7 +114,7 @@ func (t *ConnectionTab) openAndInitConnection(ctx context.Context, cancelBtn, di
 	if err != nil {
 		onError(err)
 	} else {
-		disconnectBtn.Show()
+		t.disconnectBtn.Show()
 	}
 }
 
@@ -128,7 +133,7 @@ func (t *ConnectionTab) initSSM2Connection(ctx context.Context, conn ssm2.Connec
 				continue
 			}
 
-			t.app.onNewConnection(conn, ecu)
+			t.app.OnNewConnection(conn, ecu)
 			t.connectionState.Set("Connected")
 			return nil
 		}

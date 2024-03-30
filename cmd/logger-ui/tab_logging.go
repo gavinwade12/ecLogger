@@ -38,6 +38,7 @@ type LoggingTab struct {
 	liveLogModelsMu sync.Mutex
 
 	cancelLogging context.CancelFunc
+	doneLogging   chan struct{}
 	logFile       io.WriteCloser
 }
 
@@ -60,6 +61,22 @@ func NewLoggingTab(app *App) *LoggingTab {
 
 func (t *LoggingTab) Container() fyne.CanvasObject {
 	return container.NewBorder(t.toolbar, nil, nil, nil, container.NewVScroll(t.container))
+}
+
+func (t *LoggingTab) EnableLogging() {
+	var ctx context.Context
+	ctx, t.cancelLogging = context.WithCancel(context.Background())
+	t.doneLogging = make(chan struct{})
+
+	go t.openLoggingSession(ctx)
+}
+
+func (t *LoggingTab) DisableLogging() {
+	if t.cancelLogging != nil {
+		t.cancelLogging()
+		t.cancelLogging = nil
+		<-t.doneLogging
+	}
 }
 
 func (t *LoggingTab) startLogging() {
@@ -91,7 +108,7 @@ func (t *LoggingTab) startLogging() {
 	t.app.ParametersTab.toggleParameterChanges(false)
 
 	// write the file header
-	params, derived := t.app.getCurrentLoggedParamLists()
+	params, derived := t.app.loggedParams.CurrentLists()
 	t.writeLogFileHeader(params, derived)
 
 	// remove the start button from the toolbar and add the stop button
@@ -117,7 +134,7 @@ func (t *LoggingTab) stopLogging() {
 
 func (t *LoggingTab) writeLogFileHeader(params []ssm2.Parameter, derived []ssm2.DerivedParameter) {
 	t.logFile.Write([]byte("Timestamp,"))
-	loggedParams := t.app.readOnlyLoggedParams()
+	loggedParams := t.app.loggedParams.CopyData()
 	for i, p := range params {
 		u := p.DefaultUnit
 		lp := loggedParams[p.Id]
@@ -206,11 +223,7 @@ func (m *liveLogModel) Update(val ssm2.ParameterValue) {
 
 func (t *LoggingTab) updateLiveLogParameters() {
 	t.container.RemoveAll()
-
-	if t.cancelLogging != nil {
-		t.cancelLogging()
-		t.cancelLogging = nil
-	}
+	t.DisableLogging()
 
 	t.liveLogModelsMu.Lock()
 	t.liveLogModels = []*liveLogModel{}
@@ -220,7 +233,7 @@ func (t *LoggingTab) updateLiveLogParameters() {
 		return
 	}
 
-	loggedParams := t.app.readOnlyLoggedParams()
+	loggedParams := t.app.loggedParams.CopyData()
 	for id, param := range loggedParams {
 		if !param.LiveLog {
 			continue
@@ -260,10 +273,7 @@ func (t *LoggingTab) updateLiveLogParameters() {
 	t.container.Refresh()
 
 	if liveLogModelsLen > 0 {
-		var ctx context.Context
-		ctx, t.cancelLogging = context.WithCancel(context.Background())
-
-		go t.openLoggingSession(ctx)
+		t.EnableLogging()
 	}
 }
 
@@ -271,7 +281,7 @@ func (t *LoggingTab) openLoggingSession(ctx context.Context) {
 	var (
 		session               <-chan map[string]ssm2.ParameterValue
 		err                   error
-		params, derivedParams = t.app.getCurrentLoggedParamLists()
+		params, derivedParams = t.app.loggedParams.CurrentLists()
 	)
 	for {
 		session, err = ssm2.LoggingSession(ctx, t.app.connection, params, derivedParams)
@@ -282,43 +292,35 @@ func (t *LoggingTab) openLoggingSession(ctx context.Context) {
 		logger.Debug(err.Error())
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case result := <-session:
-			if result == nil {
-				t.updateLiveLogParameters()
-				return
+	for result := range session {
+		// convert the result values to the configured units
+		loggedParams := t.app.loggedParams.CopyData()
+		for id, val := range result {
+			lp := loggedParams[id]
+			if lp == nil || lp.Unit == val.Unit {
+				continue
 			}
 
-			// convert the result values to the configured units
-			loggedParams := t.app.readOnlyLoggedParams()
-			for id, val := range result {
-				lp := loggedParams[id]
-				if lp == nil || lp.Unit == val.Unit {
-					continue
-				}
-
-				vval, err := val.ConvertTo(lp.Unit)
-				if err != nil {
-					logger.Debugf("converting %s from %s to %s: %v\n", id, val.Unit, lp.Unit, err)
-					continue
-				}
-				result[id] = *vval
+			vval, err := val.ConvertTo(lp.Unit)
+			if err != nil {
+				logger.Debugf("converting %s from %s to %s: %v\n", id, val.Unit, lp.Unit, err)
+				continue
 			}
-
-			t.loggingProcessorsMu.Lock()
-			for _, p := range t.loggingProcessors {
-				p(result)
-			}
-			t.loggingProcessorsMu.Unlock()
+			result[id] = *vval
 		}
+
+		t.loggingProcessorsMu.Lock()
+		for _, p := range t.loggingProcessors {
+			p(result)
+		}
+		t.loggingProcessorsMu.Unlock()
 	}
+
+	t.doneLogging <- struct{}{}
 }
 
 func (t *LoggingTab) onLoggedParametersChanged() {
-	loggedParams := t.app.readOnlyLoggedParams()
+	loggedParams := t.app.loggedParams.CopyData()
 	if len(loggedParams) > 0 {
 		if len(t.toolbar.Items) == 0 {
 			t.toolbar.Append(t.startBtn)

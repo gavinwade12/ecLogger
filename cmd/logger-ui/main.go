@@ -7,10 +7,14 @@ import (
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
-	fyneApp "fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/container"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/pkg/errors"
+)
+
+const (
+	configDirectoryName             = "ssm2"
+	configFileName                  = ".ssm2"
+	defaultLogFileNameFormat string = "ssm2_log_{{romId}}_{{timestamp}}.csv"
 )
 
 var logger = ssm2.DefaultLogger(os.Stdout)
@@ -21,34 +25,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	app := &App{
-		config:  config,
-		fyneApp: fyneApp.New(),
-	}
-
-	app.ConnectionTab = NewConnectionTab(app)
-	app.ParametersTab = NewParametersTab(app)
-	app.LoggingTab = NewLoggingTab(app)
-	app.SettingsTab = NewSettingsTab(app)
-	app.tabItems = container.NewAppTabs(
-		container.NewTabItem("Connection", app.ConnectionTab.Container()),
-		container.NewTabItem("Parameters", app.ParametersTab.Container()),
-		container.NewTabItem("Logging", app.LoggingTab.Container()),
-		container.NewTabItem("Settings", app.SettingsTab.Container()),
-	)
-	app.tabItems.DisableIndex(1)
-	app.tabItems.DisableIndex(2)
-	app.tabItems.SetTabLocation(container.TabLocationLeading)
+	app := NewApp(config)
 
 	window := app.fyneApp.NewWindow("Logger")
 	window.Resize(fyne.NewSize(800, 400))
 	window.SetContent(app.tabItems)
 
 	if app.config.AutoConnect {
-		go app.ConnectionTab.connectBtn.Tapped(&fyne.PointEvent{})
+		go app.ConnectionTab.OnConnectTapped()
 	}
 	if app.config.DefaultToLoggingTab {
-		app.tabItems.SelectIndex(2)
+		app.SelectTab(TabLogging)
 	}
 
 	window.ShowAndRun()
@@ -76,7 +63,7 @@ func loadConfig() (*Config, error) {
 		config.LogDirectory = &logDirectory
 		fileNameFormat := defaultLogFileNameFormat
 		config.LogFileNameFormat = &fileNameFormat
-		config.LoggedParams = make(map[string]*loggedParam)
+		config.LoggedParams = make(map[string]*LoggedParam)
 		return &config, nil
 	}
 	defer f.Close()
@@ -86,7 +73,7 @@ func loadConfig() (*Config, error) {
 		return nil, errors.Wrap(err, "decoding config from file")
 	}
 	if config.LoggedParams == nil {
-		config.LoggedParams = make(map[string]*loggedParam)
+		config.LoggedParams = make(map[string]*LoggedParam)
 	}
 	if config.UseFakeConnection {
 		openSSM2Connection = fakeOpenFunc

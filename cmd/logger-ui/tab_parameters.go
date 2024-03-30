@@ -18,13 +18,6 @@ type ParametersTab struct {
 	container *fyne.Container
 }
 
-type loggedParam struct {
-	LogToFile bool
-	LiveLog   bool
-	Derived   bool
-	Unit      units.Unit
-}
-
 func NewParametersTab(app *App) *ParametersTab {
 	paramsLayout := layout.NewGridLayoutWithColumns(4)
 	return &ParametersTab{
@@ -67,15 +60,11 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 	}
 	sort.Sort(sortableParameters(params))
 
-	t.app.tabItems.DisableIndex(1) // disable the Parameters tab
 	t.container.RemoveAll()
 
-	loggedParams := t.app.readOnlyLoggedParams()
+	loggedParams := t.app.loggedParams.CopyData()
 	for _, param := range params {
 		param := param
-
-		name := widget.NewLabel(param.Name)
-		name.Wrapping = fyne.TextWrapWord
 
 		options := make([]string, 1+len(units.UnitConversions[param.Unit]))
 		options[0] = string(param.Unit)
@@ -86,7 +75,7 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 		}
 
 		unit := widget.NewSelect(options, func(s string) {
-			lp := t.app.getLoggedParam(param.Id)
+			lp := t.app.loggedParams.Get(param.Id)
 			if lp != nil {
 				lp.Unit = units.Unit(s)
 			}
@@ -100,34 +89,34 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 
 		fileLogCheck := widget.NewCheck("Log To File", func(b bool) {
 			if b {
-				t.app.updateOrAddToLoggedParams(param.Id, func(lp *loggedParam) {
+				t.app.loggedParams.UpdateOrAdd(param.Id, func(lp *LoggedParam) {
 					lp.LogToFile = true
-				}, &loggedParam{Derived: param.Derived, LogToFile: true, Unit: units.Unit(unit.Selected)})
+				}, &LoggedParam{Derived: param.Derived, LogToFile: true, Unit: units.Unit(unit.Selected)})
 			} else {
-				lp := t.app.getLoggedParam(param.Id)
+				lp := t.app.loggedParams.Get(param.Id)
 				if lp != nil && lp.LiveLog {
-					t.app.updateLoggedParam(param.Id, func(lp *loggedParam) {
+					t.app.loggedParams.Update(param.Id, func(lp *LoggedParam) {
 						lp.LogToFile = false
 					})
 				} else {
-					t.app.removeFromLoggedParams(param.Id)
+					t.app.loggedParams.Remove(param.Id)
 				}
 			}
 			t.app.LoggingTab.onLoggedParametersChanged()
 		})
 		liveLogCheck := widget.NewCheck("Live Log", func(b bool) {
 			if b {
-				t.app.updateOrAddToLoggedParams(param.Id, func(lp *loggedParam) {
+				t.app.loggedParams.UpdateOrAdd(param.Id, func(lp *LoggedParam) {
 					lp.LiveLog = true
-				}, &loggedParam{Derived: param.Derived, LiveLog: true, Unit: units.Unit(unit.Selected)})
+				}, &LoggedParam{Derived: param.Derived, LiveLog: true, Unit: units.Unit(unit.Selected)})
 			} else {
-				lp := t.app.getLoggedParam(param.Id)
+				lp := t.app.loggedParams.Get(param.Id)
 				if lp != nil && lp.LogToFile {
-					t.app.updateLoggedParam(param.Id, func(lp *loggedParam) {
+					t.app.loggedParams.Update(param.Id, func(lp *LoggedParam) {
 						lp.LiveLog = false
 					})
 				} else {
-					t.app.removeFromLoggedParams(param.Id)
+					t.app.loggedParams.Remove(param.Id)
 				}
 			}
 			t.app.LoggingTab.onLoggedParametersChanged()
@@ -137,7 +126,7 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 		liveLogCheck.Checked = loggedParams[param.Id] != nil && loggedParams[param.Id].LiveLog
 
 		t.container.Objects = append(t.container.Objects,
-			name,
+			NewWrappedLabel(param.Name),
 			container.NewCenter(fileLogCheck),
 			container.NewCenter(liveLogCheck),
 			container.NewCenter(unit),
@@ -146,9 +135,6 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 
 	t.container.Resize(t.layout.MinSize(t.container.Objects))
 	t.container.Refresh()
-	if len(t.container.Objects) > 0 {
-		t.app.tabItems.EnableIndex(1) // enable the Parameters tab
-	}
 }
 
 func (t *ParametersTab) toggleParameterChanges(enable bool) {
