@@ -51,8 +51,8 @@ func NewLoggingTab(app *App) *LoggingTab {
 		container:         container.New(layout.NewGridLayout(3)),
 		loggingProcessors: map[string]func(map[string]ssm2.ParameterValue){},
 	}
-	loggingTab.startBtn.OnActivated = loggingTab.startLogging
-	loggingTab.stopBtn.OnActivated = loggingTab.stopLogging
+	loggingTab.startBtn.OnActivated = loggingTab.startFileLogging
+	loggingTab.stopBtn.OnActivated = loggingTab.stopFileLogging
 	loggingTab.loggingProcessors["liveLogModels"] = loggingTab.updateLiveLogModelValues
 	loggingTab.onLoggedParametersChanged()
 
@@ -77,9 +77,13 @@ func (t *LoggingTab) DisableLogging() {
 		t.cancelLogging = nil
 		<-t.doneLogging
 	}
+
+	if t.logFile != nil {
+		t.stopFileLogging()
+	}
 }
 
-func (t *LoggingTab) startLogging() {
+func (t *LoggingTab) startFileLogging() {
 	// create the log directory if it doesn't already exist
 	logDir := *t.app.config.LogDirectory
 	if err := os.MkdirAll(logDir, os.ModePerm); err != nil {
@@ -118,7 +122,7 @@ func (t *LoggingTab) startLogging() {
 	t.setLoggingProcessor("fileLogging", t.updateFileLogValues(params, derived))
 }
 
-func (t *LoggingTab) stopLogging() {
+func (t *LoggingTab) stopFileLogging() {
 	// stop the file logging
 	t.removeLoggingProcessor("fileLogging")
 	t.logFile.Close()
