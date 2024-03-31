@@ -19,55 +19,28 @@ type DTC struct {
 // ReadSetDTCs uses the provided connection to determine the DTCs that
 // are set in the ECU.
 func ReadSetDTCs(ctx context.Context, conn Connection) ([]DTC, error) {
-	byAddress := make(map[[3]byte][]DTC)
-	for _, dtc := range DTCs {
-		byAddress[dtc.TempAddress.Address] = append(
-			byAddress[dtc.TempAddress.Address], dtc)
-	}
-
-	setDTCs := []DTC{}
-
-	const batchSize = 20
-	addressesToRead := make([][3]byte, batchSize)
-	i := 0
-	for addr := range byAddress {
-		m := i % batchSize
-		i++
-
-		addressesToRead[m] = addr
-		if m != batchSize-1 {
-			continue
-		}
-
-		resp, err := conn.SendReadAddressesRequest(ctx, addressesToRead, false)
-		if err != nil {
-			return nil, errors.Wrap(err, "sending read addresses request")
-		}
-		data := resp.Data()
-
-		for j, b := range data {
-			dtcs := byAddress[addressesToRead[j]]
-			for _, dtc := range dtcs {
-				if b&1<<dtc.TempAddress.Bit > 0 {
-					setDTCs = append(setDTCs, dtc)
-				}
-			}
-		}
-	}
-
-	return setDTCs, nil
+	return readDTCs(ctx, conn, false)
 }
 
 // ReadStoredDTCs uses the provided connection to determine the DTCs that
 // are stored in the ECU.
 func ReadStoredDTCs(ctx context.Context, conn Connection) ([]DTC, error) {
+	return readDTCs(ctx, conn, true)
+}
+
+func readDTCs(ctx context.Context, conn Connection, stored bool) ([]DTC, error) {
 	byAddress := make(map[[3]byte][]DTC)
 	for _, dtc := range DTCs {
-		byAddress[dtc.Address.Address] = append(
-			byAddress[dtc.Address.Address], dtc)
+		if stored {
+			byAddress[dtc.Address.Address] = append(
+				byAddress[dtc.Address.Address], dtc)
+		} else {
+			byAddress[dtc.TempAddress.Address] = append(
+				byAddress[dtc.TempAddress.Address], dtc)
+		}
 	}
 
-	storedDTCs := []DTC{}
+	dtcs := []DTC{}
 
 	const batchSize = 20
 	addressesToRead := make([][3]byte, batchSize)
@@ -88,16 +61,25 @@ func ReadStoredDTCs(ctx context.Context, conn Connection) ([]DTC, error) {
 		data := resp.Data()
 
 		for j, b := range data {
-			dtcs := byAddress[addressesToRead[j]]
-			for _, dtc := range dtcs {
-				if b&1<<dtc.Address.Bit > 0 {
-					storedDTCs = append(storedDTCs, dtc)
+			for _, dtc := range byAddress[addressesToRead[j]] {
+				if b == 0xff {
+					continue // unsupported
+				}
+
+				if stored {
+					if b&1<<dtc.Address.Bit > 0 {
+						dtcs = append(dtcs, dtc)
+					}
+				} else {
+					if b&1<<dtc.TempAddress.Bit > 0 {
+						dtcs = append(dtcs, dtc)
+					}
 				}
 			}
 		}
 	}
 
-	return storedDTCs, nil
+	return dtcs, nil
 }
 
 var DTCs = map[string]DTC{

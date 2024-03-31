@@ -74,11 +74,12 @@ func newPacket(src, dest byte, cmd byte, data []byte) Packet {
 	packet[PacketIndexPayloadSize] = byte(len(data)) + 1
 	packet[PacketIndexCommand] = byte(cmd)
 
+	lastIndex := len(packet) - 1
 	if len(data) > 0 {
-		copy(packet[PacketIndexPayloadStart:len(packet)-1], data)
+		copy(packet[PacketIndexPayloadStart:lastIndex], data)
 	}
 
-	packet[len(packet)-1] = CalculateChecksum(packet)
+	packet[lastIndex] = CalculateChecksum(packet)
 
 	return packet
 }
