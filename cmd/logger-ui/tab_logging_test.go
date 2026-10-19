@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gavinwade12/ecLogger/units"
@@ -28,4 +31,41 @@ func TestEnableLoggingWithoutParams(t *testing.T) {
 			t.Fatal("expected the session to stop once nothing is logged")
 		}
 	})
+}
+
+func TestFileLoggingOnlyIncludesFileParams(t *testing.T) {
+	h := newTestApp(t)
+	h.connect()
+
+	h.do(func() {
+		h.loggedParams.SetLiveLog("P8", false, units.RPM, true)
+		h.LoggingTab.onLoggedParametersChanged()
+		if len(h.LoggingTab.toolbar.Items) != 0 {
+			t.Fatal("expected no Start button when nothing logs to file")
+		}
+
+		h.loggedParams.SetLogToFile("P9", false, units.MPH, true)
+		h.LoggingTab.onLoggedParametersChanged()
+		if len(h.LoggingTab.toolbar.Items) != 1 {
+			t.Fatal("expected the Start button once a parameter logs to file")
+		}
+
+		h.LoggingTab.updateLiveLogParameters()
+		h.LoggingTab.startFileLogging()
+		h.LoggingTab.stopFileLogging()
+	})
+
+	files, err := filepath.Glob(filepath.Join(h.config.LogDirectory, "*"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("log files = %v, %v; want one", files, err)
+	}
+	f, err := os.Open(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	header, _ := bufio.NewReader(f).ReadString('\n')
+	if want := "Timestamp,Vehicle Speed (mph)\n"; header != want {
+		t.Errorf("header = %q, want %q", header, want)
+	}
 }

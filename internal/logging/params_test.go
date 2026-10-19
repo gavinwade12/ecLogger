@@ -107,6 +107,23 @@ func TestParamsLists(t *testing.T) {
 	}
 }
 
+func TestParamsFileLists(t *testing.T) {
+	p := logging.NewParams(map[string]logging.LoggedParam{
+		"P8":   {LiveLog: true},
+		"P9":   {LogToFile: true, LiveLog: true},
+		"P200": {LiveLog: true, Derived: true},
+		"P201": {LogToFile: true, Derived: true},
+	})
+
+	params, derived := p.FileLists()
+	if len(params) != 1 || params[0].Id != "P9" {
+		t.Fatalf("params = %v, want [P9]", params)
+	}
+	if len(derived) != 1 || derived[0].Id != "P201" {
+		t.Fatalf("derived = %v, want [P201]", derived)
+	}
+}
+
 func TestParamsConcurrentAccess(t *testing.T) {
 	p := logging.NewParams(map[string]logging.LoggedParam{"P9": {LiveLog: true, Unit: units.MPH}})
 

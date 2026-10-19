@@ -114,10 +114,21 @@ func (p *Params) SetUnit(id string, unit units.Unit) {
 // Lists returns the logged parameters and derived parameters, sorted by ID.
 // IDs that aren't known to the ssm2 package are skipped.
 func (p *Params) Lists() ([]ssm2.Parameter, []ssm2.DerivedParameter) {
+	return p.lists(func(LoggedParam) bool { return true })
+}
+
+// FileLists is like Lists, but only returns the parameters logged to file.
+func (p *Params) FileLists() ([]ssm2.Parameter, []ssm2.DerivedParameter) {
+	return p.lists(func(lp LoggedParam) bool { return lp.LogToFile })
+}
+
+func (p *Params) lists(include func(LoggedParam) bool) ([]ssm2.Parameter, []ssm2.DerivedParameter) {
 	snapshot := p.Snapshot()
 	ids := make([]string, 0, len(snapshot))
-	for id := range snapshot {
-		ids = append(ids, id)
+	for id, lp := range snapshot {
+		if include(lp) {
+			ids = append(ids, id)
+		}
 	}
 	sort.Strings(ids)
 

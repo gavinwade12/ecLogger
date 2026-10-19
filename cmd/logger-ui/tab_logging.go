@@ -109,8 +109,9 @@ func (t *LoggingTab) startFileLogging() {
 		return
 	}
 
-	// write the file header
-	params, derived := t.app.loggedParams.Lists()
+	// write the file header with only the parameters logged to file;
+	// the session also reads the live logged ones
+	params, derived := t.app.loggedParams.FileLists()
 	csvWriter, err := logging.NewCSVWriter(f, params, derived, t.unitFor)
 	if err != nil {
 		logger.Debugf("writing log file header: %v\n", err)
@@ -247,8 +248,8 @@ func (t *LoggingTab) updateLiveLogParameters() {
 }
 
 func (t *LoggingTab) onLoggedParametersChanged() {
-	loggedParams := t.app.loggedParams.Snapshot()
-	if len(loggedParams) > 0 {
+	params, derived := t.app.loggedParams.FileLists()
+	if len(params)+len(derived) > 0 {
 		if len(t.toolbar.Items) == 0 {
 			t.toolbar.Append(t.startBtn)
 		}
