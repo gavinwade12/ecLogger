@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"log"
 	"os"
-	"path"
 
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/spf13/cobra"
@@ -44,31 +46,49 @@ var rootCmd = &cobra.Command{
 }
 
 func initConfig() {
-	if configFile != "" {
-		viper.SetConfigFile(path.Base(configFile))
-		viper.AddConfigPath(path.Dir(configFile))
-	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
+	home := ""
+	if configFile == "" {
+		var err error
+		if home, err = os.UserHomeDir(); err != nil {
 			log.Fatalf("finding home directory: %v\n", err)
 		}
-
-		viper.AddConfigPath(home)
-		viper.SetConfigName(".ssm2")
-		viper.SetConfigType("yaml")
 	}
 
 	viper.AutomaticEnv()
 
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok || os.IsNotExist(err) {
-			if err = viper.SafeWriteConfig(); err != nil {
-				log.Fatalf("creating config file: %v\n", err)
-			}
-		} else {
-			log.Fatalf("reading config file: %v\n", err)
-		}
+	if err := loadConfig(viper.GetViper(), configFile, home); err != nil {
+		log.Fatal(err)
 	}
+}
+
+// loadConfig reads configFile, or .ssm2.yaml in home when configFile is
+// empty, and creates the file when it doesn't exist.
+func loadConfig(v *viper.Viper, configFile, home string) error {
+	if configFile != "" {
+		v.SetConfigFile(configFile)
+	} else {
+		v.AddConfigPath(home)
+		v.SetConfigName(".ssm2")
+		v.SetConfigType("yaml")
+	}
+
+	err := v.ReadInConfig()
+	if err == nil {
+		return nil
+	}
+	if _, ok := err.(viper.ConfigFileNotFoundError); !ok && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("reading config file: %w", err)
+	}
+
+	if configFile != "" {
+		err = v.SafeWriteConfigAs(configFile)
+	} else {
+		err = v.SafeWriteConfig()
+	}
+	if err != nil {
+		return fmt.Errorf("creating config file: %w", err)
+	}
+	return nil
 }
 
 func postInitCommands(commands []*cobra.Command) {
