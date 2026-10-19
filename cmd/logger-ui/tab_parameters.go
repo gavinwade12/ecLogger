@@ -66,14 +66,7 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 	for _, param := range params {
 		param := param
 
-		options := make([]string, 1+len(units.UnitConversions[param.Unit]))
-		options[0] = string(param.Unit)
-		i := 1
-		for u := range units.UnitConversions[param.Unit] {
-			options[i] = string(u)
-			i++
-		}
-
+		options := unitOptions(param.Unit)
 		unit := widget.NewSelect(options, func(s string) {
 			t.app.loggedParams.SetUnit(param.Id, units.Unit(s))
 		})
@@ -107,6 +100,16 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 
 	t.container.Resize(t.layout.MinSize(t.container.Objects))
 	t.container.Refresh()
+}
+
+// unitOptions returns the units a parameter can be shown in: its default
+// unit, then the units it converts to in a stable order.
+func unitOptions(defaultUnit units.Unit) []string {
+	options := []string{string(defaultUnit)}
+	for _, u := range units.ConvertibleTo(defaultUnit) {
+		options = append(options, string(u))
+	}
+	return options
 }
 
 func (t *ParametersTab) toggleParameterChanges(enable bool) {
