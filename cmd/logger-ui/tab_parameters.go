@@ -16,6 +16,9 @@ type ParametersTab struct {
 
 	layout    fyne.Layout
 	container *fyne.Container
+
+	// inputs are the parameters' checkboxes and unit selects
+	inputs []fyne.Disableable
 }
 
 func NewParametersTab(app *App) *ParametersTab {
@@ -61,6 +64,7 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 	sort.Sort(sortableParameters(params))
 
 	t.container.RemoveAll()
+	t.inputs = nil
 
 	loggedParams := t.app.loggedParams.Snapshot()
 	for _, param := range params {
@@ -89,6 +93,7 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 		})
 		fileLogCheck.Checked = lp.LogToFile
 		liveLogCheck.Checked = lp.LiveLog
+		t.inputs = append(t.inputs, fileLogCheck, liveLogCheck, unit)
 
 		t.container.Objects = append(t.container.Objects,
 			NewWrappedLabel(param.Name),
@@ -113,31 +118,12 @@ func unitOptions(defaultUnit units.Unit) []string {
 }
 
 func (t *ParametersTab) toggleParameterChanges(enable bool) {
-	for i, o := range t.container.Objects {
-		if i%4 == 0 {
-			continue // skip the first column since it's just text
+	for _, input := range t.inputs {
+		if enable {
+			input.Enable()
+		} else {
+			input.Disable()
 		}
-
-		traverseObjectAndToggle(enable, o)
-	}
-}
-
-func traverseObjectAndToggle(enable bool, o fyne.CanvasObject) {
-	switch w := o.(type) {
-	case *fyne.Container:
-		for _, oo := range w.Objects {
-			traverseObjectAndToggle(enable, oo)
-		}
-	case fyne.Disableable:
-		toggleEnable(enable, w)
-	}
-}
-
-func toggleEnable(enable bool, o fyne.Disableable) {
-	if enable {
-		o.Enable()
-	} else {
-		o.Disable()
 	}
 }
 
