@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2/test"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
@@ -61,4 +62,28 @@ func TestInitGivesUpOnOtherErrors(t *testing.T) {
 	if !conn.closed.Load() {
 		t.Error("expected the connection to be closed")
 	}
+}
+
+func TestConnectShowsErrors(t *testing.T) {
+	h := newTestApp(t)
+	h.do(func() {
+		h.openConnection = func(string) (ssm2.Connection, error) {
+			return nil, errors.New("port busy")
+		}
+		test.Tap(h.ConnectionTab.connectBtn)
+	})
+	h.waitForState("Disconnected: port busy")
+
+	// the next attempt doesn't keep showing the old error
+	h.do(func() {
+		h.openConnection = func(string) (ssm2.Connection, error) {
+			return &failingInitConnection{err: ssm2.ErrReadTimeout}, nil
+		}
+		test.Tap(h.ConnectionTab.connectBtn)
+	})
+	h.waitForState("Initializing")
+
+	// and canceling isn't shown as an error
+	h.do(func() { test.Tap(h.ConnectionTab.cancelBtn) })
+	h.waitForState("Disconnected")
 }

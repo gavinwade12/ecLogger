@@ -108,6 +108,10 @@ func (t *ConnectionTab) openAndInitConnection(ctx context.Context, open OpenFunc
 			fyne.Do(func() {
 				cleanup()
 				t.onDisconnect()
+				// a cancel isn't an error worth showing
+				if ctx.Err() == nil {
+					t.connectionState.Set("Disconnected: " + err.Error())
+				}
 			})
 		}
 	)
