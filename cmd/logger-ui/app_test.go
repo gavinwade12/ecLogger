@@ -167,3 +167,26 @@ func TestConnectEnablesTabs(t *testing.T) {
 		}
 	})
 }
+
+func TestDisconnect(t *testing.T) {
+	h := newTestApp(t)
+	h.connect()
+
+	h.do(func() { test.Tap(h.ConnectionTab.disconnectBtn) })
+	h.waitForState("Disconnected")
+	h.do(func() {
+		if h.ConnectionTab.connectBtn.Disabled() || h.ConnectionTab.disconnectBtn.Visible() {
+			t.Error("expected Connect enabled and Disconnect hidden")
+		}
+		if h.connection != nil {
+			t.Error("expected the connection to be cleared")
+		}
+		// disconnecting twice must not panic
+		h.OnDisconnect()
+	})
+	for _, tab := range connectionTabs {
+		if h.tabEnabled(tab) {
+			t.Errorf("tab %d enabled after disconnecting", tab)
+		}
+	}
+}

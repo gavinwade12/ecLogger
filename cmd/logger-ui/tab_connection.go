@@ -194,6 +194,7 @@ func (t *ConnectionTab) querySerialPorts(ctx context.Context) {
 }
 
 func (t *ConnectionTab) onDisconnect() {
+	t.disconnectBtn.Hide()
 	t.serialPortSelect.Enable()
 	t.startSerialPortQuery()
 	t.connectBtn.Enable()

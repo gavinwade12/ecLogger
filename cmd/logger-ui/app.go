@@ -82,6 +82,9 @@ func (a *App) OnNewConnection(conn ssm2.Connection, ecu *ssm2.ECU) {
 }
 
 func (a *App) OnDisconnect() {
+	if a.connection == nil {
+		return
+	}
 	a.LoggingTab.DisableLogging()
 
 	a.connection.Close()
