@@ -1,6 +1,7 @@
 package ssm2_test
 
 import (
+	"errors"
 	"math"
 	"reflect"
 	"testing"
@@ -237,5 +238,39 @@ func TestDerivedParameter_P203(t *testing.T) {
 	}
 	if math.Abs(float64(v.Value)-35.28) > 0.05 {
 		t.Fatalf("value = %f mpg, want ~35.28", v.Value)
+	}
+}
+
+func TestDerivedParametersWithZeroDivisors(t *testing.T) {
+	tests := []struct {
+		id     string
+		params map[string]ssm2.ParameterValue
+	}{
+		{"P200", map[string]ssm2.ParameterValue{"P8": {Value: 0, Unit: units.RPM}, "P12": {Value: 0, Unit: units.GS}}},
+		{"P200", map[string]ssm2.ParameterValue{"P8": {Value: 0, Unit: units.RPM}, "P12": {Value: 2, Unit: units.GS}}},
+		{"P203", map[string]ssm2.ParameterValue{"P9": {Value: 0, Unit: units.KMH}, "P12": {Value: 0, Unit: units.GS}, "P58": {Value: 1, Unit: units.Lambda}}},
+		{"P203", map[string]ssm2.ParameterValue{"P9": {Value: 50, Unit: units.KMH}, "P12": {Value: 0, Unit: units.GS}, "P58": {Value: 1, Unit: units.Lambda}}},
+		{"P203", map[string]ssm2.ParameterValue{"P9": {Value: 50, Unit: units.KMH}, "P12": {Value: 20, Unit: units.GS}, "P58": {Value: 0, Unit: units.Lambda}}},
+		{"P232", map[string]ssm2.ParameterValue{"P160": {Value: 0}, "P230": {Value: 0}}},
+		{"P237", map[string]ssm2.ParameterValue{"P160": {Value: 1}, "P7": {Value: 0, Unit: units.KPA}}},
+		{"P242", map[string]ssm2.ParameterValue{"P200": {Value: 1}, "P11": {Value: 20, Unit: units.C}, "P7": {Value: 0, Unit: units.KPA}}},
+		{"P243", map[string]ssm2.ParameterValue{"P200": {Value: 1}, "P11": {Value: 20, Unit: units.C}, "P7": {Value: 0, Unit: units.KPA}}},
+	}
+	for _, tt := range tests {
+		v, err := ssm2.DerivedParameters[tt.id].Value(tt.params)
+		if !errors.Is(err, ssm2.ErrUndefinedValue) {
+			t.Errorf("%s%v = %v, %v; want ErrUndefinedValue", tt.id, tt.params, v, err)
+		}
+	}
+}
+
+func TestDerivedParameter_P203Stopped(t *testing.T) {
+	v, err := ssm2.DerivedParameters["P203"].Value(map[string]ssm2.ParameterValue{
+		"P9":  {Value: 0, Unit: units.KMH},
+		"P12": {Value: 3, Unit: units.GS},
+		"P58": {Value: 1, Unit: units.Lambda},
+	})
+	if err != nil || v.Value != 0 {
+		t.Fatalf("idling = %v, %v; want 0 mpg", v, err)
 	}
 }

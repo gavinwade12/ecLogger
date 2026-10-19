@@ -2,6 +2,8 @@ package ssm2
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/gavinwade12/ecLogger/units"
@@ -3660,6 +3662,18 @@ var Parameters = map[string]Parameter{
 	},
 }
 
+// ErrUndefinedValue is returned by a DerivedParameter's Value when its inputs
+// don't give a finite value, e.g. engine load at 0 rpm.
+var ErrUndefinedValue = errors.New("value is undefined for these inputs")
+
+// divide returns n / d, or ErrUndefinedValue when d, named by what, is 0.
+func divide(n, d float32, what string) (float32, error) {
+	if d == 0 {
+		return 0, fmt.Errorf("%w: %s is 0", ErrUndefinedValue, what)
+	}
+	return n / d, nil
+}
+
 // stoichiometricAFR is the stoichiometric air/fuel ratio of gasoline (lambda 1).
 const stoichiometricAFR = 14.7
 
@@ -3671,7 +3685,11 @@ var DerivedParameters = map[string]DerivedParameter{
 		DefaultUnit:         units.GramsPerRev,
 		DependsOnParameters: []string{"P8", "P12"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P12"].Value) * 60) / (params["P8"].Value), units.GramsPerRev}, nil
+			v, err := divide(params["P12"].Value*60, params["P8"].Value, "engine speed")
+			if err != nil {
+				return nil, err
+			}
+			return &ParameterValue{v, units.GramsPerRev}, nil
 		},
 	},
 	"P201": {
@@ -3706,7 +3724,15 @@ var DerivedParameters = map[string]DerivedParameter{
 			// and a US gallon of gasoline weighs ~2880g
 			mph := params["P9"].SafeConvertTo(units.MPH).Value
 			afr := params["P58"].SafeConvertTo(units.Lambda).Value * stoichiometricAFR
-			return &ParameterValue{(mph / 3600) / ((params["P12"].Value / afr) / 2880), units.MPGUS}, nil
+			fuelGallonsPerSecond, err := divide(params["P12"].Value/2880, afr, "the air/fuel ratio")
+			if err != nil {
+				return nil, err
+			}
+			v, err := divide(mph/3600, fuelGallonsPerSecond, "fuel flow")
+			if err != nil {
+				return nil, err
+			}
+			return &ParameterValue{v, units.MPGUS}, nil
 		},
 	},
 	"P230": {
@@ -3736,7 +3762,11 @@ var DerivedParameters = map[string]DerivedParameter{
 		DefaultUnit:         units.Lambda,
 		DependsOnParameters: []string{"P160", "P230"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P160"].Value) / (params["P230"].Value)) / 14.7, units.Lambda}, nil
+			v, err := divide(params["P160"].Value, params["P230"].Value, "the injection amount")
+			if err != nil {
+				return nil, err
+			}
+			return &ParameterValue{v / 14.7, units.Lambda}, nil
 		},
 	},
 	"P237": {
@@ -3746,7 +3776,11 @@ var DerivedParameters = map[string]DerivedParameter{
 		DefaultUnit:         units.Coefficient,
 		DependsOnParameters: []string{"P160", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{(params["P160"].Value) / (params["P7"].SafeConvertTo(units.KPA).Value), units.Coefficient}, nil
+			v, err := divide(params["P160"].Value, params["P7"].SafeConvertTo(units.KPA).Value, "manifold pressure")
+			if err != nil {
+				return nil, err
+			}
+			return &ParameterValue{v, units.Coefficient}, nil
 		},
 	},
 	"P242": {
@@ -3756,7 +3790,11 @@ var DerivedParameters = map[string]DerivedParameter{
 		DefaultUnit:         units.Percent,
 		DependsOnParameters: []string{"P200", "P11", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P200"].Value) * 2 * 8.314472 * ((params["P11"].SafeConvertTo(units.C).Value) + 273.15)) / ((params["P7"].SafeConvertTo(units.KPA).Value) * 2.0 * 28.97) * 100, units.Percent}, nil
+			v, err := divide((params["P200"].Value)*2*8.314472*((params["P11"].SafeConvertTo(units.C).Value)+273.15), (params["P7"].SafeConvertTo(units.KPA).Value)*2.0*28.97, "manifold pressure")
+			if err != nil {
+				return nil, err
+			}
+			return &ParameterValue{v * 100, units.Percent}, nil
 		},
 	},
 	"P243": {
@@ -3766,7 +3804,11 @@ var DerivedParameters = map[string]DerivedParameter{
 		DefaultUnit:         units.Percent,
 		DependsOnParameters: []string{"P200", "P11", "P7"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P200"].Value) * 2 * 8.314472 * ((params["P11"].SafeConvertTo(units.C).Value) + 273.15)) / ((params["P7"].SafeConvertTo(units.KPA).Value) * 2.5 * 28.97) * 100, units.Percent}, nil
+			v, err := divide((params["P200"].Value)*2*8.314472*((params["P11"].SafeConvertTo(units.C).Value)+273.15), (params["P7"].SafeConvertTo(units.KPA).Value)*2.5*28.97, "manifold pressure")
+			if err != nil {
+				return nil, err
+			}
+			return &ParameterValue{v * 100, units.Percent}, nil
 		},
 	},
 }
