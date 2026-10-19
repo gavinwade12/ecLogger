@@ -73,6 +73,10 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 		options := unitOptions(param.Unit)
 		unit := widget.NewSelect(options, func(s string) {
 			t.app.loggedParams.SetUnit(param.Id, units.Unit(s))
+			// rebuild the live log so its min/max don't mix units
+			if lp, ok := t.app.loggedParams.Get(param.Id); ok && lp.LiveLog {
+				t.app.LoggingTab.updateLiveLogParameters()
+			}
 		})
 		lp, logged := loggedParams[param.Id]
 		if logged {
