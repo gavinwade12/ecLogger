@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
+	"sync"
 	"time"
 )
 
@@ -30,6 +30,15 @@ func loggerFor(conn Connection) Logger {
 type connection struct {
 	serialPort io.ReadWriteCloser
 	log        Logger
+
+	// reads receives what the background reader reads from the serial port.
+	// It's nil when no reader is running. unread holds received bytes that
+	// haven't been consumed yet.
+	reads  chan readResult
+	unread []byte
+
+	closed    chan struct{}
+	closeOnce sync.Once
 }
 
 const (
@@ -56,6 +65,7 @@ func NewConnection(serialPort io.ReadWriteCloser, l Logger) Connection {
 	return &connection{
 		serialPort: serialPort,
 		log:        l,
+		closed:     make(chan struct{}),
 	}
 }
 
@@ -197,44 +207,74 @@ func (c *connection) nextPacket(ctx context.Context, attempt int) (Packet, error
 }
 
 type readResult struct {
-	count int
-	err   error
+	data []byte
+	err  error
 }
 
+// readInFull fills b with bytes from the serial port. The port is read by a
+// background goroutine, so a read that's canceled or times out doesn't leave
+// a goroutine behind to swallow the bytes of the next packet: anything that
+// arrives later is kept for the next read. Bytes already copied into b are
+// dropped; the next packet read resyncs on the magic byte.
 func (c *connection) readInFull(ctx context.Context, b []byte) error {
-	// start a goroutine to read the buffer in full
-	result := make(chan readResult, 1)
-	go func(ctx context.Context, result chan<- readResult, b []byte) {
-		readCount := 0
-		for readCount < len(b) {
-			if err := c.waitForNBytesToTransfer(ctx, len(b)-readCount); err != nil {
-				result <- readResult{readCount, err}
-				return
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	n := copy(b, c.unread)
+	c.unread = c.unread[n:]
+	if n == len(b) {
+		return nil
+	}
+
+	if c.reads == nil {
+		c.reads = make(chan readResult, 16)
+		go c.readSerialPort(c.reads)
+	}
+
+	timeout := time.NewTimer(ConnectionTotalReadTimeout)
+	defer timeout.Stop()
+
+	for n < len(b) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout.C:
+			return ErrReadTimeout
+		case r := <-c.reads:
+			if r.err != nil {
+				c.reads = nil // the reader stops after an error
+				return r.err
 			}
+			logBytes(c.log, r.data, "read: ")
+			copied := copy(b[n:], r.data)
+			n += copied
+			c.unread = append(c.unread, r.data[copied:]...)
+		}
+	}
+	return nil
+}
 
-			c.log.Debug("starting read")
-			count, err := c.serialPort.Read(b[readCount:])
-
-			if count > 0 {
-				logBytes(c.log, b[readCount:readCount+count], "read: ")
-			}
-			readCount += count
-
-			if err != nil {
-				result <- readResult{readCount, err}
+// readSerialPort reads from the serial port and sends the results on reads
+// until a read fails or the connection is closed.
+func (c *connection) readSerialPort(reads chan<- readResult) {
+	buf := make([]byte, 256)
+	for {
+		count, err := c.serialPort.Read(buf)
+		if count > 0 {
+			select {
+			case reads <- readResult{data: append([]byte(nil), buf[:count]...)}:
+			case <-c.closed:
 				return
 			}
 		}
-		result <- readResult{readCount, nil}
-	}(ctx, result, b)
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.NewTimer(ConnectionTotalReadTimeout).C:
-		return ErrReadTimeout
-	case r := <-result:
-		return r.err
+		if err != nil {
+			select {
+			case reads <- readResult{err: err}:
+			case <-c.closed:
+			}
+			return
+		}
 	}
 }
 
@@ -244,36 +284,13 @@ func (c *connection) logger() Logger {
 
 func (c *connection) Close() error {
 	c.log.Debug("closing connection")
+	c.closeOnce.Do(func() { close(c.closed) })
 
 	if c.serialPort != nil {
 		return c.serialPort.Close()
 	}
 
 	return nil
-}
-
-func (c *connection) waitForNBytesToTransfer(ctx context.Context, n int) error {
-	ms := microsecondsOnTheWire(n)
-	c.log.Debugf("waiting %s for %d bytes\n", ms, n)
-	select {
-	case <-time.NewTimer(ms).C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-// baud rate = bits per second
-// baud (bits/s) * 1s/1,000,000 µs = baud rate in µs
-// word = start bit (1) + data bits (8) + stop bits (1) = 10 bits
-// since we use 8 data bits, and 8 bits = 1 byte, we are transmitting 1 word per byte of data
-// so, creating an equation...
-// baud rate in µs = 4800bits/1,000,000µs = 10bits*byteCount/xµs = wordSize*wordCount/x
-// x = (10*byteCount*1,000,000)/4800 µs = (byteCount*10,000,000)/4800 µs
-func microsecondsOnTheWire(byteCount int) time.Duration {
-	return time.Duration(int(math.Round(
-		float64(byteCount*10000000)/float64(ConnectionBaudRate),
-	))) * time.Microsecond
 }
 
 type Logger interface {

@@ -4,27 +4,58 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
+// testSerialPort reads from out and writes to in. Like a real port with a
+// read timeout, reading with nothing to read returns no bytes and no error.
+// The connection reads on a background goroutine, so access is guarded by mu.
 type testSerialPort struct {
+	mu     sync.Mutex
 	out    *bytes.Buffer
 	in     *bytes.Buffer
 	closed bool
 }
 
 func (p *testSerialPort) Read(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.out.Len() == 0 {
+		time.Sleep(time.Millisecond)
+		return 0, nil
+	}
 	return p.out.Read(b)
 }
 
+// setOut replaces the bytes to be read.
+func (p *testSerialPort) setOut(b []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.out = bytes.NewBuffer(b)
+}
+
+// written returns the bytes written to the port, and clears them.
+func (p *testSerialPort) written() []byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	b := p.in.Bytes()
+	p.in = &bytes.Buffer{}
+	return b
+}
+
 func (p *testSerialPort) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.in.Write(b)
 }
 
 func (p *testSerialPort) Close() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.closed = true
 	return nil
 }
@@ -74,7 +105,10 @@ func TestSendingPacket(t *testing.T) {
 
 		conn := ssm2.NewConnection(port, nil)
 
-		_, err := conn.InitECU(context.Background())
+		// no magic byte is found, so it waits for more bytes until the deadline
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		_, err := conn.InitECU(ctx)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -165,10 +199,10 @@ func TestSendingPacket(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		b := make([]byte, 1)
-		_, err = port.out.Read(b)
-		if err != io.EOF {
-			t.Fatal("expected EOF / buffer to have been read in full")
+		port.mu.Lock()
+		defer port.mu.Unlock()
+		if port.out.Len() != 0 {
+			t.Fatal("expected the buffer to have been read in full")
 		}
 	})
 }
@@ -185,7 +219,7 @@ func TestInitECU(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		got := port.in.Bytes()
+		got := port.written()
 		if !bytes.Equal(initRequestPacket, got) {
 			t.Fatalf("unexpected init request. want: 0x%x. got: 0x%x.", initRequestPacket, got)
 		}
@@ -308,7 +342,7 @@ func TestSendReadAddressesRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		got := port.in.Bytes()
+		got := port.written()
 		want := []byte{
 			ssm2.PacketMagicByte, ssm2.DeviceEngine, ssm2.DeviceDiagnosticTool,
 			byte((len(addresses) * 3) + 2), ssm2.CommandReadAddressesRequest, 0x00,
@@ -322,14 +356,13 @@ func TestSendReadAddressesRequest(t *testing.T) {
 			t.Fatalf("unexpected read addresses request. want: 0x%x. got: 0x%x.", want, got)
 		}
 
-		port.in = &bytes.Buffer{}
-		port.out = bytes.NewBuffer(resp)
+		port.setOut(resp)
 		_, err = conn.SendReadAddressesRequest(context.Background(), addresses, true)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		got = port.in.Bytes()
+		got = port.written()
 		want = []byte{
 			ssm2.PacketMagicByte, ssm2.DeviceEngine, ssm2.DeviceDiagnosticTool,
 			byte((len(addresses) * 3) + 2), ssm2.CommandReadAddressesRequest, 0x01,
@@ -395,18 +428,18 @@ func TestSendReadAddressesRequest(t *testing.T) {
 }
 
 // shortWritePort reports writing fewer bytes than it was given.
-type shortWritePort struct{ testSerialPort }
+type shortWritePort struct{ *testSerialPort }
 
 func (p *shortWritePort) Write(b []byte) (int, error) { return len(b) - 1, nil }
 
 // errPort fails every read.
-type errPort struct{ testSerialPort }
+type errPort struct{ *testSerialPort }
 
 func (p *errPort) Read(b []byte) (int, error) { return 0, errors.New("boom") }
 
 func TestConnectionErrors(t *testing.T) {
 	t.Run("ShortWrite", func(t *testing.T) {
-		port := &shortWritePort{*newTestSerialPort()}
+		port := &shortWritePort{newTestSerialPort()}
 		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.InitECU(context.Background())
@@ -416,7 +449,7 @@ func TestConnectionErrors(t *testing.T) {
 	})
 
 	t.Run("ReadError", func(t *testing.T) {
-		port := &errPort{*newTestSerialPort()}
+		port := &errPort{newTestSerialPort()}
 		conn := ssm2.NewConnection(port, nil)
 
 		_, err := conn.NextPacket(context.Background())
@@ -469,4 +502,42 @@ func TestNextPacketResync(t *testing.T) {
 			t.Fatalf("unexpected packet. want: %x. got: %x.", minimalInitResponse(), p)
 		}
 	})
+}
+
+// blockingPort returns each chunk sent on chunks from a separate Read,
+// blocking until one is available.
+type blockingPort struct {
+	testSerialPort
+	chunks chan []byte
+}
+
+func (p *blockingPort) Read(b []byte) (int, error) {
+	return copy(b, <-p.chunks), nil
+}
+
+func TestCanceledReadDoesNotLoseTheNextPacket(t *testing.T) {
+	port := &blockingPort{chunks: make(chan []byte)}
+	conn := ssm2.NewConnection(port, nil)
+
+	// nothing arrives before the read is canceled
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := conn.NextPacket(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want context.DeadlineExceeded. got: %v.", err)
+	}
+
+	// then the next packet arrives, in two parts
+	resp := minimalInitResponse()
+	go func() {
+		port.chunks <- resp[:3]
+		port.chunks <- resp[3:]
+	}()
+
+	p, err := conn.NextPacket(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(p, resp) {
+		t.Fatalf("unexpected packet. want: %x. got: %x.", resp, p)
+	}
 }
