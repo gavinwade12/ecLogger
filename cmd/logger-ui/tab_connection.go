@@ -26,6 +26,7 @@ type ConnectionTab struct {
 	disconnectBtn   *widget.Button
 	cancelBtn       *widget.Button
 	connectionState binding.String
+	initRetryDelay  time.Duration
 
 	container *fyne.Container
 }
@@ -40,6 +41,7 @@ func NewConnectionTab(app *App) *ConnectionTab {
 		disconnectBtn:   widget.NewButton("Disconnect", nil),
 		cancelBtn:       widget.NewButton("Cancel", nil),
 		connectionState: binding.NewString(),
+		initRetryDelay:  time.Second,
 	}
 	connectionTab.startSerialPortQuery()
 
@@ -131,25 +133,29 @@ func (t *ConnectionTab) openAndInitConnection(ctx context.Context, open OpenFunc
 	})
 }
 
+// initSSM2Connection sends init requests until the ECU responds or the
+// context is canceled. Read timeouts (e.g. the ignition is off) are retried
+// after initRetryDelay; any other error gives up. conn is closed on failure.
 func (t *ConnectionTab) initSSM2Connection(ctx context.Context, conn ssm2.Connection) error {
-	// keep trying to init the connection until we successfully connect
-	// or the context is cancelled
 	for {
-		select {
-		case <-ctx.Done():
-			conn.Close()
-			return ctx.Err()
-		default:
-			ecu, err := conn.InitECU(ctx)
-			if err != nil {
-				logger.Debug(err.Error())
-				continue
-			}
-
+		ecu, err := conn.InitECU(ctx)
+		if err == nil {
 			fyne.DoAndWait(func() {
 				t.app.OnNewConnection(conn, ecu)
 			})
 			return nil
+		}
+		if ctx.Err() == nil && !errors.Is(err, ssm2.ErrReadTimeout) {
+			conn.Close()
+			return fmt.Errorf("initializing ECU: %w", err)
+		}
+		logger.Debug(err.Error())
+
+		select {
+		case <-ctx.Done():
+			conn.Close()
+			return ctx.Err()
+		case <-time.After(t.initRetryDelay):
 		}
 	}
 }
