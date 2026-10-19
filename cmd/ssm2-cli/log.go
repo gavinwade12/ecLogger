@@ -171,7 +171,7 @@ var logCmd = &cobra.Command{
 					if result.err == context.DeadlineExceeded {
 						return nil
 					}
-					return errors.Wrap(err, "reading next packet from connection")
+					return errors.Wrap(result.err, "reading next packet from connection")
 				}
 
 				data := result.packet.Data()
