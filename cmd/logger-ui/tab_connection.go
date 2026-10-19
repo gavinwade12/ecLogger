@@ -19,7 +19,7 @@ type ConnectionTab struct {
 	app *App
 
 	serialPortSelect    *widget.Select
-	stopSerialPortQuery chan struct{}
+	stopSerialPortQuery context.CancelFunc
 
 	connectBtn      *widget.Button
 	disconnectBtn   *widget.Button
@@ -40,7 +40,7 @@ func NewConnectionTab(app *App) *ConnectionTab {
 		cancelBtn:       widget.NewButton("Cancel", nil),
 		connectionState: binding.NewString(),
 	}
-	go connectionTab.querySerialPorts()
+	connectionTab.startSerialPortQuery()
 
 	form := widget.NewForm(
 		widget.NewFormItem("Port", connectionTab.serialPortSelect),
@@ -75,7 +75,7 @@ func (t *ConnectionTab) OnConnectTapped() {
 	t.connectBtn.Disable()
 	t.serialPortSelect.Disable()
 	t.cancelBtn.Show()
-	t.stopSerialPortQuery <- struct{}{}
+	t.stopSerialPortQuery()
 
 	// set up the cancel button
 	ctx, cancel := context.WithCancel(context.Background())
@@ -140,9 +140,15 @@ func (t *ConnectionTab) initSSM2Connection(ctx context.Context, conn ssm2.Connec
 	}
 }
 
-func (t *ConnectionTab) querySerialPorts() {
-	t.stopSerialPortQuery = make(chan struct{})
+// startSerialPortQuery starts polling for serial ports in the background
+// until t.stopSerialPortQuery is called.
+func (t *ConnectionTab) startSerialPortQuery() {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.stopSerialPortQuery = cancel
+	go t.querySerialPorts(ctx)
+}
 
+func (t *ConnectionTab) querySerialPorts(ctx context.Context) {
 	query := func() {
 		pl, err := enumerator.GetDetailedPortsList()
 		if err != nil {
@@ -163,12 +169,14 @@ func (t *ConnectionTab) querySerialPorts() {
 	// query now
 	query()
 
-	// and query every 30 seconds until we receive a signal to stop
+	// and query every 30 seconds until we're told to stop
+	ticker := time.NewTicker(time.Second * 30)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-t.stopSerialPortQuery:
+		case <-ctx.Done():
 			return
-		case <-time.NewTicker(time.Second * 30).C:
+		case <-ticker.C:
 			query()
 		}
 	}
@@ -176,7 +184,7 @@ func (t *ConnectionTab) querySerialPorts() {
 
 func (t *ConnectionTab) onDisconnect() {
 	t.serialPortSelect.Enable()
-	go t.querySerialPorts()
+	t.startSerialPortQuery()
 	t.connectBtn.Enable()
 	t.connectionState.Set("Disconnected")
 }
