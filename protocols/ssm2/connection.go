@@ -107,7 +107,7 @@ func (c *connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 		return nil, errors.Wrap(err, "writing packet bytes")
 	}
 	if wb != len(p) {
-		return nil, errors.Wrapf(err, "only wrote %d bytes (packet had %d bytes)", wb, len(p))
+		return nil, errors.Errorf("only wrote %d bytes (packet had %d bytes)", wb, len(p))
 	}
 
 	sentCommand := p[PacketIndexCommand]
