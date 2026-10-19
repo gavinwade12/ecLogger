@@ -22,6 +22,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// every widget update from a goroutine goes through fyne.Do, so Fyne
+	// doesn't need to check which goroutine calls it
+	fyneApp.SetMetadata(fyne.AppMetadata{
+		Name:       "Logger",
+		Migrations: map[string]bool{"fyneDo": true},
+	})
 	app := NewApp(fyneApp.New(), cfg, openSerialConnection, listSerialPorts)
 
 	window := app.fyneApp.NewWindow("Logger")
