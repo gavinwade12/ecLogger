@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
+	"slices"
 	"time"
 
+	"github.com/gavinwade12/ecLogger/internal/logging"
 	"github.com/gavinwade12/ecLogger/internal/serialport"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/gavinwade12/ecLogger/units"
@@ -26,7 +27,7 @@ func init() {
 
 	rootCmd.AddCommand(logCmd)
 
-	logCmd.Flags().StringVar(&logFileFormat, "logFileFormat", "{{romID}}-{{timestamp}}.csv", "The format used for generating a log file name (path included). Variables can be injected using the format {{variableName}}. Supported variables: romID, timestamp.")
+	logCmd.Flags().StringVar(&logFileFormat, "logFileFormat", "{{romId}}-{{timestamp}}.csv", "The format used for generating a log file name (path included). Variables can be injected using the format {{variableName}}. Supported variables: romId (hex), timestamp.")
 }
 
 type loggedParameter struct {
@@ -55,15 +56,14 @@ var logCmd = &cobra.Command{
 			return errors.New("no parameters are configured for logging")
 		}
 
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+
 		conn, err := serialport.Open(port, ssm2Logger(cmd))
 		if err != nil {
 			return fmt.Errorf("creating new connection: %w", err)
 		}
-		defer conn.Close()
-
-		ctx, cancel := context.WithCancel(context.Background())
-		ctx, _ = signal.NotifyContext(ctx, os.Interrupt, os.Kill)
-		defer cancel()
+		defer func() { conn.Close() }() // conn is replaced when init times out
 
 		// send an init command until a successful response or interruption is received
 		stdOut := cmd.OutOrStdout()
@@ -71,21 +71,21 @@ var logCmd = &cobra.Command{
 			fmt.Fprintln(stdOut, "initializing with ECU and determining supported parameters...")
 		}
 		var ecu *ssm2.ECU
-		for ecu == nil {
+		for {
 			ecu, err = conn.InitECU(ctx)
 			if err == nil {
 				break
 			}
-
+			if ctx.Err() != nil {
+				return nil // interrupted
+			}
 			if !errors.Is(err, ssm2.ErrReadTimeout) {
 				return fmt.Errorf("sending init request: %w", err)
 			}
-			ecu = nil
 
 			if err = conn.Close(); err != nil {
 				return fmt.Errorf("closing ssm2 connection: %w", err)
 			}
-
 			conn, err = serialport.Open(port, ssm2Logger(cmd))
 			if err != nil {
 				return fmt.Errorf("creating new connection: %w", err)
@@ -95,108 +95,116 @@ var logCmd = &cobra.Command{
 			fmt.Fprintln(stdOut, "initialized")
 		}
 
-		logFileFormat = strings.NewReplacer(
-			"{{romID}}", string(ecu.ROM_ID),
-			"{{timestamp}}", time.Now().Format("20060102_150405"), //yyyyMMdd_hhmmss
-		).Replace(logFileFormat)
-		if !quiet {
-			fmt.Fprintf(stdOut, "logging to file: %s\n", logFileFormat)
+		params, derived, unitFor, err := selectParams(cfgParams, ecu)
+		if err != nil {
+			return err
 		}
 
-		f, err := os.OpenFile(logFileFormat, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
+		fileName := logging.FileName(logFileFormat, ecu.ROM_ID, time.Now())
+		if !quiet {
+			fmt.Fprintf(stdOut, "logging to file: %s\n", fileName)
+		}
+		f, err := os.OpenFile(fileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 		if err != nil {
 			return fmt.Errorf("opening file for logging: %w", err)
 		}
 		defer f.Close()
 
-		// gather the parameters to log. start with read parameters, then do derived parameters
-		loggedParams := []ssm2.Parameter{}
-		loggedDerivedParams := []ssm2.DerivedParameter{}
-		headers := []string{}
-		addressesToRead := [][3]byte{}
-		for _, cfgParam := range cfgParams {
-			if cfgParam.Derived {
-				continue
-			}
-
-			p := ssm2.Parameters[cfgParam.Id]
-			headers = append(headers, fmt.Sprintf("%s (%s)", p.Name, cfgParam.Unit))
-			loggedParams = append(loggedParams, p)
-			addressesToRead = append(addressesToRead, p.Address.Address)
-		}
-		for _, cfgParam := range cfgParams {
-			if !cfgParam.Derived {
-				continue
-			}
-
-			dp := ssm2.DerivedParameters[cfgParam.Id]
-			headers = append(headers, fmt.Sprintf("%s (%s)", dp.Name, cfgParam.Unit))
-			loggedDerivedParams = append(loggedDerivedParams, dp)
-		}
-
-		if len(loggedParams) == 0 {
-			return errors.New("no loggable parameters")
-		}
-
-		_, err = f.WriteString(strings.Join(headers, ",") + "\n")
-		if err != nil {
-			return fmt.Errorf("writing header line to log file: %w", err)
-		}
-
-		// begin reading the parameter values
-		fmt.Fprintln(stdOut, "sending read addresses request")
-		_, err = conn.SendReadAddressesRequest(ctx, addressesToRead, true)
-		if err != nil {
-			return fmt.Errorf("sending read address request: %w", err)
-		}
-
-		// read the packets in a go routine so we don't potentially block reads with our processing
-		type packetResult struct {
-			packet ssm2.Packet
-			err    error
-		}
-		results := make(chan packetResult, 5) // buffer the channel in case it takes us longer to process than it takes to read
-
-		go func() {
-			for {
-				p, err := conn.NextPacket(ctx)
-				results <- packetResult{p, err}
-			}
-		}()
-
-		// process the read packets until cancelled
-		for {
-			select {
-			case result := <-results:
-				if result.err != nil {
-					if result.err == context.DeadlineExceeded {
-						return nil
-					}
-					return fmt.Errorf("reading next packet from connection: %w", result.err)
-				}
-
-				data := result.packet.Data()
-				index := 0
-				for i, param := range loggedParams {
-					pv := param.Value(data[index : index+param.Address.Length])
-					val := strconv.FormatFloat(float64(pv.Value), 'f', 2, 32) + " " + string(pv.Unit)
-					if i < len(loggedParams)-1 {
-						val += ","
-					}
-					if _, err = f.WriteString(val); err != nil {
-						return fmt.Errorf("writing parameter value: %w", err)
-					}
-					index += param.Address.Length
-				}
-			case <-ctx.Done():
-				err := ctx.Err()
-				if errors.Is(err, context.DeadlineExceeded) {
-					return nil
-				}
-				return err
-			}
-		}
+		return logToCSV(ctx, conn, f, params, derived, unitFor, ssm2Logger(cmd))
 	},
+}
+
+// selectParams returns the configured parameters that ecu supports, and the
+// unit each should be logged in. Unknown and unsupported parameters are
+// skipped, and an error is returned if none are left or a configured unit
+// can't be converted to.
+func selectParams(cfgParams []loggedParameter, ecu *ssm2.ECU) ([]ssm2.Parameter, []ssm2.DerivedParameter,
+	map[string]units.Unit, error) {
+	supported := map[string]bool{}
+	for _, p := range ecu.SupportedParameters {
+		supported[p.Id] = true
+	}
+	for _, p := range ecu.SupportedDerivedParameters {
+		supported[p.Id] = true
+	}
+
+	var (
+		params  []ssm2.Parameter
+		derived []ssm2.DerivedParameter
+		unitFor = map[string]units.Unit{}
+	)
+	for _, cfgParam := range cfgParams {
+		if !supported[cfgParam.Id] {
+			continue
+		}
+
+		var defaultUnit units.Unit
+		if cfgParam.Derived {
+			p, ok := ssm2.DerivedParameters[cfgParam.Id]
+			if !ok {
+				continue
+			}
+			derived = append(derived, p)
+			defaultUnit = p.DefaultUnit
+		} else {
+			p, ok := ssm2.Parameters[cfgParam.Id]
+			if !ok {
+				continue
+			}
+			params = append(params, p)
+			defaultUnit = p.DefaultUnit
+		}
+
+		u := cfgParam.Unit
+		if u == "" {
+			u = defaultUnit
+		}
+		if u != defaultUnit && !slices.Contains(units.ConvertibleTo(defaultUnit), u) {
+			return nil, nil, nil, fmt.Errorf("%s can't be logged in %s", cfgParam.Id, u)
+		}
+		unitFor[cfgParam.Id] = u
+	}
+
+	if len(params) == 0 && len(derived) == 0 {
+		return nil, nil, nil, errors.New("none of the configured parameters are supported by the ECU")
+	}
+	return params, derived, unitFor, nil
+}
+
+// logToCSV logs params and derived from conn to w as CSV until ctx is
+// canceled or writing fails. Values are converted to the units in unitFor.
+func logToCSV(ctx context.Context, conn ssm2.Connection, w io.Writer, params []ssm2.Parameter,
+	derived []ssm2.DerivedParameter, unitFor map[string]units.Unit, l ssm2.Logger) error {
+	csvWriter, err := logging.NewCSVWriter(w, params, derived, func(id string, _ units.Unit) units.Unit {
+		return unitFor[id]
+	})
+	if err != nil {
+		return fmt.Errorf("writing header line to log file: %w", err)
+	}
+
+	runner := logging.NewRunner(func(id string) (units.Unit, bool) {
+		u, ok := unitFor[id]
+		return u, ok
+	}, l)
+
+	writeErr := make(chan error, 1)
+	runner.Subscribe("csv", func(values map[string]ssm2.ParameterValue) {
+		if err := csvWriter.Write(time.Now(), values); err != nil {
+			select {
+			case writeErr <- err:
+			default:
+			}
+		}
+	})
+	runner.Start(conn, params, derived)
+	defer runner.Stop()
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-writeErr:
+		return fmt.Errorf("writing parameter values: %w", err)
+	}
 }
 
 var paramID string
