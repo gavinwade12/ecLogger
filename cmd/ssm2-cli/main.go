@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"path"
@@ -10,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"go.bug.st/serial"
 )
 
 const portSettingName string = "port"
@@ -96,26 +94,4 @@ func ssm2Logger(cmd *cobra.Command) ssm2.Logger {
 		return ssm2.NopLogger
 	}
 	return ssm2.DefaultLogger(cmd.OutOrStdout())
-}
-
-func createSSM2Conn(port string, l ssm2.Logger) (ssm2.Connection, error) {
-	l.Debugf("opening serial port %s", port)
-	sp, err := serial.Open(port, &serial.Mode{
-		BaudRate: ssm2.ConnectionBaudRate,
-		DataBits: ssm2.ConnectionDataBits,
-		Parity:   serial.NoParity,
-		StopBits: serial.OneStopBit,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("opening serial port '%s': %w", port, err)
-	}
-
-	if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
-		return nil, fmt.Errorf("setting serial port read timeout: %w", err)
-	}
-	if err = sp.ResetInputBuffer(); err != nil {
-		return nil, fmt.Errorf("resetting input buffer: %w", err)
-	}
-
-	return ssm2.NewConnection(sp, l), nil
 }

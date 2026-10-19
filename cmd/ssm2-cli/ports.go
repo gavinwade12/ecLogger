@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gavinwade12/ecLogger/internal/serialport"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.bug.st/serial/enumerator"
 )
 
 func init() {
@@ -29,7 +29,7 @@ var listPortsCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List the available ports on the host",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ports, err := availablePorts()
+		ports, err := serialport.List()
 		if err != nil {
 			return err
 		}
@@ -39,10 +39,10 @@ var listPortsCmd = &cobra.Command{
 	},
 }
 
-func listPorts(w io.Writer, ports []serialPort) {
+func listPorts(w io.Writer, ports []serialport.Port) {
 	for i, p := range ports {
 		fmt.Fprintf(w, "[%d]:\tPortName: '%s'\n\tProduct: %s\n\tVID/PID: %s/%s\n\tUSB: %v\n\tSelected: %v\n",
-			i, p.PortName, p.Product, p.VendorID, p.ProductID, p.IsUSB, p.PortName == port)
+			i, p.Name, p.Product, p.VendorID, p.ProductID, p.IsUSB, p.Name == port)
 	}
 }
 
@@ -51,7 +51,7 @@ var selectPortCmd = &cobra.Command{
 	Short:        "Set the port to use in the config file",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ports, err := availablePorts()
+		ports, err := serialport.List()
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ var selectPortCmd = &cobra.Command{
 			return err
 		}
 
-		portName := ports[i].PortName
+		portName := ports[i].Name
 		viper.Set(portSettingName, portName)
 		fmt.Fprintf(cmd.OutOrStdout(), "Selected '%s'\n", portName)
 
@@ -86,33 +86,4 @@ func parseSelection(input string, n int) (int, error) {
 		return 0, errors.New("invalid selection")
 	}
 	return i, nil
-}
-
-type serialPort struct {
-	PortName  string
-	Product   string
-	IsUSB     bool
-	VendorID  string
-	ProductID string
-}
-
-// availablePorts returns all available serial ports on the current host.
-func availablePorts() ([]serialPort, error) {
-	list, err := enumerator.GetDetailedPortsList()
-	if err != nil {
-		return nil, err
-	}
-
-	ports := make([]serialPort, len(list))
-	for i, p := range list {
-		ports[i] = serialPort{
-			PortName:  p.Name,
-			Product:   p.Product,
-			IsUSB:     p.IsUSB,
-			VendorID:  p.VID,
-			ProductID: p.PID,
-		}
-	}
-
-	return ports, nil
 }

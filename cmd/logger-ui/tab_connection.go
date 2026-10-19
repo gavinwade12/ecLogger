@@ -11,9 +11,8 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	"github.com/gavinwade12/ecLogger/internal/serialport"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
-	"go.bug.st/serial"
-	"go.bug.st/serial/enumerator"
 )
 
 type ConnectionTab struct {
@@ -212,31 +211,12 @@ func openSerialConnection(port string) (ssm2.Connection, error) {
 	if port == "" {
 		return nil, errors.New("a port is required")
 	}
-
-	logger.Debugf("opening serial port %s", port)
-	sp, err := serial.Open(port, &serial.Mode{
-		BaudRate: ssm2.ConnectionBaudRate,
-		DataBits: ssm2.ConnectionDataBits,
-		Parity:   serial.NoParity,
-		StopBits: serial.OneStopBit,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("opening serial port '%s': %w", port, err)
-	}
-
-	if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
-		return nil, fmt.Errorf("setting serial port read timeout: %w", err)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return ssm2.NewConnection(sp, logger), nil
+	return serialport.Open(port, logger)
 }
 
 // listSerialPorts returns the names of the serial ports on the host.
 func listSerialPorts() ([]string, error) {
-	pl, err := enumerator.GetDetailedPortsList()
+	pl, err := serialport.List()
 	if err != nil {
 		return nil, err
 	}

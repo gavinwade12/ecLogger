@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gavinwade12/ecLogger/internal/serialport"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/gavinwade12/ecLogger/units"
 	"github.com/spf13/cobra"
@@ -54,7 +55,7 @@ var logCmd = &cobra.Command{
 			return errors.New("no parameters are configured for logging")
 		}
 
-		conn, err := createSSM2Conn(port, ssm2Logger(cmd))
+		conn, err := serialport.Open(port, ssm2Logger(cmd))
 		if err != nil {
 			return fmt.Errorf("creating new connection: %w", err)
 		}
@@ -85,7 +86,7 @@ var logCmd = &cobra.Command{
 				return fmt.Errorf("closing ssm2 connection: %w", err)
 			}
 
-			conn, err = createSSM2Conn(port, ssm2Logger(cmd))
+			conn, err = serialport.Open(port, ssm2Logger(cmd))
 			if err != nil {
 				return fmt.Errorf("creating new connection: %w", err)
 			}
