@@ -74,7 +74,7 @@ func (c *fakeConnection) NextPacket(ctx context.Context) (Packet, error) {
 	if c.continuousAddressRead {
 		return c.addressResponsePacket(), nil
 	}
-	return newPacket(DeviceEngine, DeviceDiagnosticTool, CommandReadAddressesResponse, nil), nil
+	return NewPacket(DeviceEngine, DeviceDiagnosticTool, CommandReadAddressesResponse, nil), nil
 }
 
 // Close stops the connection's ticker.

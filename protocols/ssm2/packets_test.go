@@ -7,6 +7,39 @@ import (
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
+func TestNewPacket(t *testing.T) {
+	tests := []struct {
+		name string
+		src  byte
+		dest byte
+		cmd  byte
+		data []byte
+		want ssm2.Packet
+	}{
+		{
+			"no data",
+			ssm2.DeviceDiagnosticTool, ssm2.DeviceEngine, ssm2.CommandInitRequest, nil,
+			ssm2.Packet{0x80, 0x10, 0xf0, 0x01, 0xbf, 0x40},
+		},
+		{
+			"with data",
+			ssm2.DeviceEngine, ssm2.DeviceDiagnosticTool, ssm2.CommandReadAddressesResponse, []byte{0xaa, 0xbb},
+			ssm2.Packet{0x80, 0xf0, 0x10, 0x03, 0xe8, 0xaa, 0xbb, 0xd0},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ssm2.NewPacket(tt.src, tt.dest, tt.cmd, tt.data)
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("NewPacket() = %x, want %x", []byte(got), []byte(tt.want))
+			}
+			if !bytes.Equal(got.Data(), tt.data) {
+				t.Errorf("Data() = %x, want %x", got.Data(), tt.data)
+			}
+		})
+	}
+}
+
 func TestCalculateChecksum(t *testing.T) {
 	tests := []struct {
 		name   string

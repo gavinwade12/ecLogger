@@ -70,7 +70,9 @@ func (p Packet) Data() []byte {
 	return p[PacketIndexPayloadStart : len(p)-1]
 }
 
-func newPacket(src, dest byte, cmd byte, data []byte) Packet {
+// NewPacket returns a packet with the given source, destination, command, and
+// data, including its checksum.
+func NewPacket(src, dest byte, cmd byte, data []byte) Packet {
 	packet := make(Packet, PacketHeaderSize+len(data)+1)
 	packet[PacketIndexMagicByte] = PacketMagicByte
 	packet[PacketIndexDestination] = byte(dest)

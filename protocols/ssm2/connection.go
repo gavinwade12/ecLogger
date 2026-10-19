@@ -71,7 +71,7 @@ func NewConnection(serialPort io.ReadWriteCloser, l Logger) Connection {
 
 // InitECU sends an init Command to the ECU and parses the response.
 func (c *connection) InitECU(ctx context.Context) (*ECU, error) {
-	p := newPacket(DeviceDiagnosticTool, DeviceEngine, CommandInitRequest, nil)
+	p := NewPacket(DeviceDiagnosticTool, DeviceEngine, CommandInitRequest, nil)
 	rp, err := c.sendPacket(ctx, p)
 	if err != nil {
 		return nil, fmt.Errorf("sending packet: %w", err)
@@ -101,7 +101,7 @@ func (c *connection) SendReadAddressesRequest(ctx context.Context, addresses [][
 		}
 	}
 
-	p := newPacket(DeviceDiagnosticTool, DeviceEngine, CommandReadAddressesRequest, data)
+	p := NewPacket(DeviceDiagnosticTool, DeviceEngine, CommandReadAddressesRequest, data)
 	rp, err := c.sendPacket(ctx, p)
 	if err != nil {
 		return nil, fmt.Errorf("sending packet: %w", err)

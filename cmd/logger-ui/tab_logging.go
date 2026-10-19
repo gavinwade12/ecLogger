@@ -30,6 +30,9 @@ type LoggingTab struct {
 	container *fyne.Container
 
 	runner *logging.Runner
+	// paused keeps the logging session stopped while the connection is
+	// used for something else.
+	paused bool
 
 	liveLogModels   []*liveLogModel
 	liveLogModelsMu sync.Mutex
@@ -61,12 +64,25 @@ func (t *LoggingTab) Container() fyne.CanvasObject {
 // EnableLogging starts a logging session for the logged parameters. When
 // there is nothing to be logged, any existing session is stopped.
 func (t *LoggingTab) EnableLogging() {
-	if t.app.connection == nil || t.app.loggedParams.Len() == 0 {
+	if t.paused || t.app.connection == nil || t.app.loggedParams.Len() == 0 {
 		t.runner.Stop()
 		return
 	}
 	params, derived := t.app.loggedParams.Lists()
 	t.runner.Start(t.app.connection, params, derived)
+}
+
+// PauseLogging stops the logging session until ResumeLogging is called.
+// Unlike DisableLogging, file logging stays on and continues on resume.
+func (t *LoggingTab) PauseLogging() {
+	t.paused = true
+	t.runner.Stop()
+}
+
+// ResumeLogging restarts the logging session stopped by PauseLogging.
+func (t *LoggingTab) ResumeLogging() {
+	t.paused = false
+	t.EnableLogging()
 }
 
 func (t *LoggingTab) DisableLogging() {
