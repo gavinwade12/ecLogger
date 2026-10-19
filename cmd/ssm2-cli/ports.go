@@ -2,11 +2,11 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.bug.st/serial/enumerator"
@@ -70,7 +70,7 @@ var selectPortCmd = &cobra.Command{
 
 		i, err := strconv.Atoi(input)
 		if err != nil {
-			return errors.Wrap(err, "parsing input as integer")
+			return fmt.Errorf("parsing input as integer: %w", err)
 		}
 
 		if i < 0 || i >= len(ports) {

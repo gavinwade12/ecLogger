@@ -2,13 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -48,7 +48,7 @@ func main() {
 func loadConfig() (*Config, error) {
 	dir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, errors.Wrap(err, "finding user home directory")
+		return nil, fmt.Errorf("finding user home directory: %w", err)
 	}
 	ssm2Dir := filepath.Join(dir, configDirectoryName)
 
@@ -56,7 +56,7 @@ func loadConfig() (*Config, error) {
 	f, err := os.Open(filepath.Join(ssm2Dir, configFileName))
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return nil, errors.Wrap(err, "opening config file")
+			return nil, fmt.Errorf("opening config file: %w", err)
 		}
 
 		logDirectory := filepath.Join(ssm2Dir, "logs")
@@ -70,7 +70,7 @@ func loadConfig() (*Config, error) {
 
 	err = json.NewDecoder(f).Decode(&config)
 	if err != nil {
-		return nil, errors.Wrap(err, "decoding config from file")
+		return nil, fmt.Errorf("decoding config from file: %w", err)
 	}
 	if config.LoggedParams == nil {
 		config.LoggedParams = make(map[string]*LoggedParam)
@@ -92,29 +92,29 @@ func loadConfig() (*Config, error) {
 func saveConfig(config Config) error {
 	dir, err := os.UserHomeDir()
 	if err != nil {
-		return errors.Wrap(err, "finding user home directory")
+		return fmt.Errorf("finding user home directory: %w", err)
 	}
 
 	configPath := filepath.Join(dir, configDirectoryName, configFileName)
 	f, err := os.OpenFile(configPath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return errors.Wrap(err, "opening config file")
+			return fmt.Errorf("opening config file: %w", err)
 		}
 
 		if err = os.Mkdir(filepath.Join(dir, configDirectoryName), os.ModePerm); err != nil {
-			return errors.Wrap(err, "creating config directory")
+			return fmt.Errorf("creating config directory: %w", err)
 		}
 		f, err = os.OpenFile(configPath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
 		if err != nil {
-			return errors.Wrap(err, "opening config file")
+			return fmt.Errorf("opening config file: %w", err)
 		}
 	}
 	defer f.Close()
 
 	err = json.NewEncoder(f).Encode(config)
 	if err != nil {
-		return errors.Wrap(err, "encoding config to file")
+		return fmt.Errorf("encoding config to file: %w", err)
 	}
 	return nil
 }

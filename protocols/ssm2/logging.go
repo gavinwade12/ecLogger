@@ -2,8 +2,7 @@ package ssm2
 
 import (
 	"context"
-
-	"github.com/pkg/errors"
+	"fmt"
 )
 
 // LoggingSession sends a continuous ReadAddressesRequest for the given parameters
@@ -21,7 +20,7 @@ func LoggingSession(ctx context.Context, conn Connection, params []Parameter,
 
 	_, err := conn.SendReadAddressesRequest(ctx, addressesToRead, true)
 	if err != nil {
-		return nil, errors.Wrap(err, "sending read addresses request")
+		return nil, fmt.Errorf("sending read addresses request: %w", err)
 	}
 
 	results := make(chan map[string]ParameterValue, 10)

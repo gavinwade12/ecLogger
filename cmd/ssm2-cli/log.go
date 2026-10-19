@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/gavinwade12/ecLogger/units"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -48,7 +48,7 @@ var logCmd = &cobra.Command{
 
 		var cfgParams []loggedParameter
 		if err := viper.UnmarshalKey("logging.parameters", &cfgParams); err != nil {
-			return errors.Wrap(err, "getting parameters configured for logging")
+			return fmt.Errorf("getting parameters configured for logging: %w", err)
 		}
 		if len(cfgParams) == 0 {
 			return errors.New("no parameters are configured for logging")
@@ -56,7 +56,7 @@ var logCmd = &cobra.Command{
 
 		conn, err := createSSM2Conn(port, ssm2Logger(cmd))
 		if err != nil {
-			return errors.Wrap(err, "creating new connection")
+			return fmt.Errorf("creating new connection: %w", err)
 		}
 		defer conn.Close()
 
@@ -77,17 +77,17 @@ var logCmd = &cobra.Command{
 			}
 
 			if !errors.Is(err, ssm2.ErrReadTimeout) {
-				return errors.Wrap(err, "sending init request")
+				return fmt.Errorf("sending init request: %w", err)
 			}
 			ecu = nil
 
 			if err = conn.Close(); err != nil {
-				return errors.Wrap(err, "closing ssm2 connection")
+				return fmt.Errorf("closing ssm2 connection: %w", err)
 			}
 
 			conn, err = createSSM2Conn(port, ssm2Logger(cmd))
 			if err != nil {
-				return errors.Wrap(err, "creating new connection")
+				return fmt.Errorf("creating new connection: %w", err)
 			}
 		}
 		if !quiet {
@@ -104,7 +104,7 @@ var logCmd = &cobra.Command{
 
 		f, err := os.OpenFile(logFileFormat, os.O_CREATE|os.O_TRUNC|os.O_RDWR, os.ModePerm)
 		if err != nil {
-			return errors.Wrap(err, "opening file for logging")
+			return fmt.Errorf("opening file for logging: %w", err)
 		}
 		defer f.Close()
 
@@ -139,14 +139,14 @@ var logCmd = &cobra.Command{
 
 		_, err = f.WriteString(strings.Join(headers, ",") + "\n")
 		if err != nil {
-			return errors.Wrap(err, "writing header line to log file")
+			return fmt.Errorf("writing header line to log file: %w", err)
 		}
 
 		// begin reading the parameter values
 		fmt.Fprintln(stdOut, "sending read addresses request")
 		_, err = conn.SendReadAddressesRequest(ctx, addressesToRead, true)
 		if err != nil {
-			return errors.Wrap(err, "sending read address request")
+			return fmt.Errorf("sending read address request: %w", err)
 		}
 
 		// read the packets in a go routine so we don't potentially block reads with our processing
@@ -171,7 +171,7 @@ var logCmd = &cobra.Command{
 					if result.err == context.DeadlineExceeded {
 						return nil
 					}
-					return errors.Wrap(result.err, "reading next packet from connection")
+					return fmt.Errorf("reading next packet from connection: %w", result.err)
 				}
 
 				data := result.packet.Data()
@@ -183,7 +183,7 @@ var logCmd = &cobra.Command{
 						val += ","
 					}
 					if _, err = f.WriteString(val); err != nil {
-						return errors.Wrap(err, "writing parameter value")
+						return fmt.Errorf("writing parameter value: %w", err)
 					}
 					index += param.Address.Length
 				}
@@ -214,7 +214,7 @@ var addLoggedParamCmd = &cobra.Command{
 
 		var cfgParams []loggedParameter
 		if err := viper.UnmarshalKey("logging.parameters", &cfgParams); err != nil {
-			return errors.Wrap(err, "getting parameters configured for logging")
+			return fmt.Errorf("getting parameters configured for logging: %w", err)
 		}
 		for _, p := range cfgParams {
 			if p.Id == paramID {

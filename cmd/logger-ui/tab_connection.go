@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -10,7 +12,6 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
-	"github.com/pkg/errors"
 	"go.bug.st/serial"
 	"go.bug.st/serial/enumerator"
 )
@@ -215,11 +216,11 @@ var (
 			StopBits: serial.OneStopBit,
 		})
 		if err != nil {
-			return nil, errors.Wrapf(err, "opening serial port '%s'", app.config.SelectedPort)
+			return nil, fmt.Errorf("opening serial port '%s': %w", app.config.SelectedPort, err)
 		}
 
 		if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
-			return nil, errors.Wrap(err, "setting serial port read timeout")
+			return nil, fmt.Errorf("setting serial port read timeout: %w", err)
 		}
 		if err != nil {
 			return nil, err

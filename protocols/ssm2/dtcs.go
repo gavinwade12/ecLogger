@@ -2,8 +2,7 @@ package ssm2
 
 import (
 	"context"
-
-	"github.com/pkg/errors"
+	"fmt"
 )
 
 type DTC struct {
@@ -56,7 +55,7 @@ func readDTCs(ctx context.Context, conn Connection, stored bool) ([]DTC, error) 
 
 		resp, err := conn.SendReadAddressesRequest(ctx, addressesToRead, false)
 		if err != nil {
-			return nil, errors.Wrap(err, "sending read addresses request")
+			return nil, fmt.Errorf("sending read addresses request: %w", err)
 		}
 		data := resp.Data()
 

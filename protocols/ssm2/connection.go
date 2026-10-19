@@ -2,13 +2,12 @@ package ssm2
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"math"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 // Connection provides high-level methods for communicating with an ECU
@@ -59,7 +58,7 @@ func (c *connection) InitECU(ctx context.Context) (*ECU, error) {
 	p := newPacket(DeviceDiagnosticTool, DeviceEngine, CommandInitRequest, nil)
 	rp, err := c.sendPacket(ctx, p)
 	if err != nil {
-		return nil, errors.Wrap(err, "sending packet")
+		return nil, fmt.Errorf("sending packet: %w", err)
 	}
 
 	if rp[PacketIndexCommand] != byte(CommandInitResponse) {
@@ -89,7 +88,7 @@ func (c *connection) SendReadAddressesRequest(ctx context.Context, addresses [][
 	p := newPacket(DeviceDiagnosticTool, DeviceEngine, CommandReadAddressesRequest, data)
 	rp, err := c.sendPacket(ctx, p)
 	if err != nil {
-		return nil, errors.Wrap(err, "sending packet")
+		return nil, fmt.Errorf("sending packet: %w", err)
 	}
 
 	if rp[PacketIndexCommand] != byte(CommandReadAddressesResponse) {
@@ -104,10 +103,10 @@ func (c *connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 
 	wb, err := c.serialPort.Write(p)
 	if err != nil {
-		return nil, errors.Wrap(err, "writing packet bytes")
+		return nil, fmt.Errorf("writing packet bytes: %w", err)
 	}
 	if wb != len(p) {
-		return nil, errors.Errorf("only wrote %d bytes (packet had %d bytes)", wb, len(p))
+		return nil, fmt.Errorf("only wrote %d bytes (packet had %d bytes)", wb, len(p))
 	}
 
 	sentCommand := p[PacketIndexCommand]
@@ -115,7 +114,7 @@ func (c *connection) sendPacket(ctx context.Context, p Packet) (Packet, error) {
 	for currentCommand == sentCommand { // make sure we aren't reading back the packet we just sent
 		p, err = c.NextPacket(ctx)
 		if err != nil {
-			return nil, errors.Wrap(err, "reading response packet")
+			return nil, fmt.Errorf("reading response packet: %w", err)
 		}
 		currentCommand = p[PacketIndexCommand]
 		if currentCommand == sentCommand {
@@ -142,11 +141,11 @@ func (c *connection) nextPacket(ctx context.Context, attempt int) (Packet, error
 	c.log.Debugf("reading %d header bytes\n", PacketHeaderSize)
 	err := c.readInFull(ctx, header)
 	if err != nil {
-		return nil, errors.Wrap(err, "reading packet header")
+		return nil, fmt.Errorf("reading packet header: %w", err)
 	}
 	if err = validateHeader(header); err != nil {
 		if header[0] == PacketMagicByte {
-			return nil, errors.Wrap(err, "invalid packet header")
+			return nil, fmt.Errorf("invalid packet header: %w", err)
 		}
 
 		// let's try to find the next magic byte - maybe we're getting data from a previous packet
@@ -166,11 +165,11 @@ func (c *connection) nextPacket(ctx context.Context, attempt int) (Packet, error
 		rem := make([]byte, *mbi)
 		err := c.readInFull(ctx, rem)
 		if err != nil {
-			return nil, errors.Wrap(err, "reading packet header")
+			return nil, fmt.Errorf("reading packet header: %w", err)
 		}
 		header = append(header[*mbi:], rem...)
 		if err = validateHeader(header); err != nil {
-			return nil, errors.Wrap(err, "invalid packet header")
+			return nil, fmt.Errorf("invalid packet header: %w", err)
 		}
 	}
 
@@ -178,7 +177,7 @@ func (c *connection) nextPacket(ctx context.Context, attempt int) (Packet, error
 	c.log.Debugf("reading %d payload bytes\n", len(payload))
 	err = c.readInFull(ctx, payload)
 	if err != nil {
-		return nil, errors.Wrap(err, "reading packet payload")
+		return nil, fmt.Errorf("reading packet payload: %w", err)
 	}
 
 	packet := Packet(append(header, payload...))

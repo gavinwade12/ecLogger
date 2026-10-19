@@ -1,13 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path"
 
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
-	"github.com/mitchellh/go-homedir"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -51,7 +50,7 @@ func initConfig() {
 		viper.SetConfigFile(path.Base(configFile))
 		viper.AddConfigPath(path.Dir(configFile))
 	} else {
-		home, err := homedir.Dir()
+		home, err := os.UserHomeDir()
 		if err != nil {
 			log.Fatalf("finding home directory: %v\n", err)
 		}
@@ -108,14 +107,14 @@ func createSSM2Conn(port string, l ssm2.Logger) (ssm2.Connection, error) {
 		StopBits: serial.OneStopBit,
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "opening serial port '%s'", port)
+		return nil, fmt.Errorf("opening serial port '%s': %w", port, err)
 	}
 
 	if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
-		return nil, errors.Wrap(err, "setting serial port read timeout")
+		return nil, fmt.Errorf("setting serial port read timeout: %w", err)
 	}
 	if err = sp.ResetInputBuffer(); err != nil {
-		return nil, errors.Wrap(err, "resetting input buffer")
+		return nil, fmt.Errorf("resetting input buffer: %w", err)
 	}
 
 	return ssm2.NewConnection(sp, l), nil
