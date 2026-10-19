@@ -3660,6 +3660,9 @@ var Parameters = map[string]Parameter{
 	},
 }
 
+// stoichiometricAFR is the stoichiometric air/fuel ratio of gasoline (lambda 1).
+const stoichiometricAFR = 14.7
+
 var DerivedParameters = map[string]DerivedParameter{
 	"P200": {
 		Id:                  "P200",
@@ -3699,7 +3702,11 @@ var DerivedParameters = map[string]DerivedParameter{
 		DefaultUnit:         units.MPGUS,
 		DependsOnParameters: []string{"P9", "P12", "P58"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{((params["P9"].SafeConvertTo(units.KMH).Value) / 3600) / (((params["P12"].Value) / (params["P58"].SafeConvertTo(units.Lambda).Value)) / 2880), units.MPGUS}, nil
+			// miles/s divided by fuel gallons/s, where fuel g/s = MAF / AFR
+			// and a US gallon of gasoline weighs ~2880g
+			mph := params["P9"].SafeConvertTo(units.MPH).Value
+			afr := params["P58"].SafeConvertTo(units.Lambda).Value * stoichiometricAFR
+			return &ParameterValue{(mph / 3600) / ((params["P12"].Value / afr) / 2880), units.MPGUS}, nil
 		},
 	},
 	"P230": {

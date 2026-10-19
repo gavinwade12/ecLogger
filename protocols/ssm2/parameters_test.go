@@ -220,3 +220,22 @@ func TestDerivedParameter_P202(t *testing.T) {
 		t.Fatalf("value = %f psi, want ~14.5 (100 kPa)", v.Value)
 	}
 }
+
+func TestDerivedParameter_P203(t *testing.T) {
+	// 60 mph on 20 g/s of air at stoichiometric: 20/14.7 = 1.36 g/s of fuel,
+	// or 0.000472 gal/s, while covering 0.01667 miles/s = ~35.3 mpg
+	v, err := ssm2.DerivedParameters["P203"].Value(map[string]ssm2.ParameterValue{
+		"P9":  {Value: 96.5606, Unit: units.KMH}, // vehicle speed
+		"P12": {Value: 20, Unit: units.GS},       // mass airflow
+		"P58": {Value: 1, Unit: units.Lambda},    // A/F sensor #1
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Unit != units.MPGUS {
+		t.Fatalf("unit = %s, want mpg (US)", v.Unit)
+	}
+	if math.Abs(float64(v.Value)-35.28) > 0.05 {
+		t.Fatalf("value = %f mpg, want ~35.28", v.Value)
+	}
+}
