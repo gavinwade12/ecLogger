@@ -58,7 +58,13 @@ func (t *LoggingTab) Container() fyne.CanvasObject {
 	return container.NewBorder(t.toolbar, nil, nil, nil, container.NewVScroll(t.container))
 }
 
+// EnableLogging starts a logging session for the logged parameters. When
+// there is nothing to be logged, any existing session is stopped.
 func (t *LoggingTab) EnableLogging() {
+	if t.app.connection == nil || t.app.loggedParams.Len() == 0 {
+		t.runner.Stop()
+		return
+	}
 	params, derived := t.app.loggedParams.Lists()
 	t.runner.Start(t.app.connection, params, derived)
 }
@@ -221,9 +227,7 @@ func (t *LoggingTab) updateLiveLogParameters() {
 	t.container.Refresh()
 
 	// file logging also needs a session, even if nothing is live logged
-	if t.app.loggedParams.Len() > 0 {
-		t.EnableLogging()
-	}
+	t.EnableLogging()
 }
 
 func (t *LoggingTab) onLoggedParametersChanged() {
