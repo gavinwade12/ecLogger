@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gavinwade12/ecLogger/internal/logging"
+	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/gavinwade12/ecLogger/units"
 )
 
@@ -68,4 +70,25 @@ func TestFileLoggingOnlyIncludesFileParams(t *testing.T) {
 	if want := "Timestamp,Vehicle Speed (mph)\n"; header != want {
 		t.Errorf("header = %q, want %q", header, want)
 	}
+}
+
+func TestLiveLogModelShowsPlaceholderUntilAValue(t *testing.T) {
+	m := newLiveLogModel("P8", "Engine Speed")
+	check := func(wantValue, wantUnit string) {
+		t.Helper()
+		for name, b := range map[string]interface{ Get() (string, error) }{
+			"current": m.CurrentValueBinding, "min": m.MinValueBinding, "max": m.MaxValueBinding,
+		} {
+			if got, _ := b.Get(); got != wantValue {
+				t.Errorf("%s = %q, want %q", name, got, wantValue)
+			}
+		}
+		if got, _ := m.UnitBinding.Get(); got != wantUnit {
+			t.Errorf("unit = %q, want %q", got, wantUnit)
+		}
+	}
+
+	check(noValue, "")
+	m.Update(ssm2.ParameterValue{Value: 800, Unit: units.RPM}, logging.Stats{Min: 800, Max: 800, Count: 1})
+	check("800.00", string(units.RPM))
 }

@@ -167,6 +167,9 @@ type liveLogModel struct {
 	MinValueBinding binding.String
 }
 
+// noValue is shown for a live logged parameter until it has a value.
+const noValue = "–"
+
 func newLiveLogModel(id, name string) *liveLogModel {
 	m := &liveLogModel{
 		Id:                  id,
@@ -176,9 +179,10 @@ func newLiveLogModel(id, name string) *liveLogModel {
 		MaxValueBinding:     binding.NewString(),
 		MinValueBinding:     binding.NewString(),
 	}
-	m.CurrentValueBinding.Set("0")
-	m.MaxValueBinding.Set("0")
-	m.MinValueBinding.Set("0")
+	// a placeholder rather than 0, which looks like a real reading
+	m.CurrentValueBinding.Set(noValue)
+	m.MaxValueBinding.Set(noValue)
+	m.MinValueBinding.Set(noValue)
 	return m
 }
 
