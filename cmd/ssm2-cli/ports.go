@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -58,23 +59,13 @@ var selectPortCmd = &cobra.Command{
 		fmt.Fprint(cmd.OutOrStdout(), "Port (index): ")
 
 		input, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
-		if err != nil {
+		if err != nil && !(errors.Is(err, io.EOF) && input != "") {
 			return err
 		}
 
-		// trim the newline from the input before parsing
-		input = input[:len(input)-1]
-		if input[len(input)-1] == '\r' {
-			input = input[:len(input)-1]
-		}
-
-		i, err := strconv.Atoi(input)
+		i, err := parseSelection(input, len(ports))
 		if err != nil {
-			return fmt.Errorf("parsing input as integer: %w", err)
-		}
-
-		if i < 0 || i >= len(ports) {
-			return errors.New("invalid selection")
+			return err
 		}
 
 		portName := ports[i].PortName
@@ -83,6 +74,18 @@ var selectPortCmd = &cobra.Command{
 
 		return viper.WriteConfig()
 	},
+}
+
+// parseSelection parses input as an index into a list of n ports.
+func parseSelection(input string, n int) (int, error) {
+	i, err := strconv.Atoi(strings.TrimSpace(input))
+	if err != nil {
+		return 0, fmt.Errorf("parsing input as integer: %w", err)
+	}
+	if i < 0 || i >= n {
+		return 0, errors.New("invalid selection")
+	}
+	return i, nil
 }
 
 type serialPort struct {
