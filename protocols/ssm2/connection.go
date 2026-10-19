@@ -57,6 +57,9 @@ const (
 // ErrReadTimeout is returned when reading a packet times out.
 var ErrReadTimeout = errors.New("the read operation timed out")
 
+// ErrConnectionClosed is returned when reading from a closed connection.
+var ErrConnectionClosed = errors.New("the connection is closed")
+
 // NewConnection returns a new Connection.
 func NewConnection(serialPort io.ReadWriteCloser, l Logger) Connection {
 	if l == nil {
@@ -220,6 +223,11 @@ func (c *connection) readInFull(ctx context.Context, b []byte) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	select {
+	case <-c.closed:
+		return ErrConnectionClosed
+	default:
+	}
 
 	n := copy(b, c.unread)
 	c.unread = c.unread[n:]
@@ -239,6 +247,8 @@ func (c *connection) readInFull(ctx context.Context, b []byte) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-c.closed:
+			return ErrConnectionClosed
 		case <-timeout.C:
 			return ErrReadTimeout
 		case r := <-c.reads:

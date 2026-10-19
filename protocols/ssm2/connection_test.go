@@ -541,3 +541,24 @@ func TestCanceledReadDoesNotLoseTheNextPacket(t *testing.T) {
 		t.Fatalf("unexpected packet. want: %x. got: %x.", resp, p)
 	}
 }
+
+func TestReadOnClosedConnection(t *testing.T) {
+	port := &blockingPort{chunks: make(chan []byte)}
+	conn := ssm2.NewConnection(port, nil)
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		conn.Close()
+	}()
+	start := time.Now()
+	if _, err := conn.NextPacket(context.Background()); !errors.Is(err, ssm2.ErrConnectionClosed) {
+		t.Fatalf("want ErrConnectionClosed. got: %v.", err)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("closing took %s to interrupt the read", d)
+	}
+
+	if _, err := conn.NextPacket(context.Background()); !errors.Is(err, ssm2.ErrConnectionClosed) {
+		t.Fatalf("want ErrConnectionClosed after closing. got: %v.", err)
+	}
+}
