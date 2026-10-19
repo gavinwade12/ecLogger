@@ -32,7 +32,7 @@ func main() {
 	window.SetContent(app.tabItems)
 
 	if app.config.AutoConnect {
-		go app.ConnectionTab.OnConnectTapped()
+		app.fyneApp.Lifecycle().SetOnStarted(app.ConnectionTab.OnConnectTapped)
 	}
 	if app.config.DefaultToLoggingTab {
 		app.SelectTab(TabLogging)

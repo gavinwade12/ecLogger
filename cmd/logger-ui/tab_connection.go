@@ -88,6 +88,8 @@ func (t *ConnectionTab) OnConnectTapped() {
 	go t.openAndInitConnection(ctx)
 }
 
+// openAndInitConnection runs on its own goroutine, so all widget updates
+// are dispatched to the main goroutine via fyne.Do.
 func (t *ConnectionTab) openAndInitConnection(ctx context.Context) {
 	var (
 		cleanup = func() {
@@ -95,9 +97,11 @@ func (t *ConnectionTab) openAndInitConnection(ctx context.Context) {
 			t.serialPortSelect.Enable()
 		}
 		onError = func(err error) {
-			cleanup()
-			t.onDisconnect()
 			logger.Debug(err.Error())
+			fyne.Do(func() {
+				cleanup()
+				t.onDisconnect()
+			})
 		}
 	)
 
@@ -110,12 +114,14 @@ func (t *ConnectionTab) openAndInitConnection(ctx context.Context) {
 
 	t.connectionState.Set("Initializing")
 	err = t.initSSM2Connection(ctx, conn)
-	cleanup()
 	if err != nil {
 		onError(err)
-	} else {
-		t.disconnectBtn.Show()
+		return
 	}
+	fyne.Do(func() {
+		cleanup()
+		t.disconnectBtn.Show()
+	})
 }
 
 func (t *ConnectionTab) initSSM2Connection(ctx context.Context, conn ssm2.Connection) error {
@@ -133,7 +139,9 @@ func (t *ConnectionTab) initSSM2Connection(ctx context.Context, conn ssm2.Connec
 				continue
 			}
 
-			t.app.OnNewConnection(conn, ecu)
+			fyne.DoAndWait(func() {
+				t.app.OnNewConnection(conn, ecu)
+			})
 			t.connectionState.Set("Connected")
 			return nil
 		}
@@ -161,9 +169,11 @@ func (t *ConnectionTab) querySerialPorts(ctx context.Context) {
 			ports[i] = p.Name
 		}
 
-		t.serialPortSelect.Options = ports
-		t.serialPortSelect.SetSelected(t.app.config.SelectedPort)
-		t.serialPortSelect.Refresh()
+		fyne.Do(func() {
+			t.serialPortSelect.Options = ports
+			t.serialPortSelect.SetSelected(t.app.config.SelectedPort)
+			t.serialPortSelect.Refresh()
+		})
 	}
 
 	// query now
