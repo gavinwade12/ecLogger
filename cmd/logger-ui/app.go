@@ -2,7 +2,6 @@ package main
 
 import (
 	"fyne.io/fyne/v2"
-	fyneApp "fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"github.com/gavinwade12/ecLogger/internal/config"
 	"github.com/gavinwade12/ecLogger/internal/logging"
@@ -32,15 +31,27 @@ type App struct {
 	DTCsTab       *DTCsTab
 	SettingsTab   *SettingsTab
 
+	// openConnection opens a connection on a serial port, and listPorts
+	// lists the available serial ports. Tests replace them with fakes.
+	openConnection OpenFunc
+	listPorts      func() ([]string, error)
+
 	connection ssm2.Connection
 	ecu        *ssm2.ECU
 }
 
-func NewApp(cfg *config.Config) *App {
+// OpenFunc opens a connection to the ECU on the given serial port.
+type OpenFunc func(port string) (ssm2.Connection, error)
+
+// NewApp builds the UI on fyneApp. open opens real connections; it's
+// replaced with a fake connection when cfg.UseFakeConnection is set.
+func NewApp(fyneApp fyne.App, cfg *config.Config, open OpenFunc, listPorts func() ([]string, error)) *App {
 	app := &App{
-		config:       cfg,
-		loggedParams: logging.NewParams(cfg.LoggedParams),
-		fyneApp:      fyneApp.New(),
+		config:         cfg,
+		loggedParams:   logging.NewParams(cfg.LoggedParams),
+		fyneApp:        fyneApp,
+		openConnection: open,
+		listPorts:      listPorts,
 	}
 
 	app.ConnectionTab = NewConnectionTab(app)

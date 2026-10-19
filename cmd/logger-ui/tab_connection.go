@@ -85,13 +85,18 @@ func (t *ConnectionTab) OnConnectTapped() {
 		t.cancelBtn.Hide()
 	}
 
+	open := t.app.openConnection
+	if t.app.config.UseFakeConnection {
+		open = openFakeConnection
+	}
+
 	// try connecting in another goroutine to prevent the UI from locking up
-	go t.openAndInitConnection(ctx)
+	go t.openAndInitConnection(ctx, open, t.app.config.SelectedPort)
 }
 
 // openAndInitConnection runs on its own goroutine, so all widget updates
 // are dispatched to the main goroutine via fyne.Do.
-func (t *ConnectionTab) openAndInitConnection(ctx context.Context) {
+func (t *ConnectionTab) openAndInitConnection(ctx context.Context, open OpenFunc, port string) {
 	var (
 		cleanup = func() {
 			t.cancelBtn.Hide()
@@ -107,7 +112,7 @@ func (t *ConnectionTab) openAndInitConnection(ctx context.Context) {
 	)
 
 	t.connectionState.Set("Connecting")
-	conn, err := openSSM2Connection(t.app)
+	conn, err := open(port)
 	if err != nil {
 		onError(err)
 		return
@@ -122,6 +127,7 @@ func (t *ConnectionTab) openAndInitConnection(ctx context.Context) {
 	fyne.Do(func() {
 		cleanup()
 		t.disconnectBtn.Show()
+		t.connectionState.Set("Connected")
 	})
 }
 
@@ -143,7 +149,6 @@ func (t *ConnectionTab) initSSM2Connection(ctx context.Context, conn ssm2.Connec
 			fyne.DoAndWait(func() {
 				t.app.OnNewConnection(conn, ecu)
 			})
-			t.connectionState.Set("Connected")
 			return nil
 		}
 	}
@@ -159,15 +164,10 @@ func (t *ConnectionTab) startSerialPortQuery() {
 
 func (t *ConnectionTab) querySerialPorts(ctx context.Context) {
 	query := func() {
-		pl, err := enumerator.GetDetailedPortsList()
+		ports, err := t.app.listPorts()
 		if err != nil {
 			logger.Debug(err.Error())
 			return
-		}
-
-		ports := make([]string, len(pl))
-		for i, p := range pl {
-			ports[i] = p.Name
 		}
 
 		fyne.Do(func() {
@@ -200,36 +200,47 @@ func (t *ConnectionTab) onDisconnect() {
 	t.connectionState.Set("Disconnected")
 }
 
-var (
-	defaultOpenFunc = func(app *App) (ssm2.Connection, error) {
-		app.ConnectionTab.connectionState.Set("Connecting...")
-
-		if app.config.SelectedPort == "" {
-			return nil, errors.New("a port is required")
-		}
-
-		logger.Debugf("opening serial port %s", app.config.SelectedPort)
-		sp, err := serial.Open(app.config.SelectedPort, &serial.Mode{
-			BaudRate: ssm2.ConnectionBaudRate,
-			DataBits: ssm2.ConnectionDataBits,
-			Parity:   serial.NoParity,
-			StopBits: serial.OneStopBit,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("opening serial port '%s': %w", app.config.SelectedPort, err)
-		}
-
-		if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
-			return nil, fmt.Errorf("setting serial port read timeout: %w", err)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		return ssm2.NewConnection(sp, logger), nil
+// openSerialConnection opens a connection on a real serial port.
+func openSerialConnection(port string) (ssm2.Connection, error) {
+	if port == "" {
+		return nil, errors.New("a port is required")
 	}
-	fakeOpenFunc = func(app *App) (ssm2.Connection, error) {
-		return ssm2.NewFakeConnection(time.Millisecond * 50), nil
+
+	logger.Debugf("opening serial port %s", port)
+	sp, err := serial.Open(port, &serial.Mode{
+		BaudRate: ssm2.ConnectionBaudRate,
+		DataBits: ssm2.ConnectionDataBits,
+		Parity:   serial.NoParity,
+		StopBits: serial.OneStopBit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("opening serial port '%s': %w", port, err)
 	}
-	openSSM2Connection = defaultOpenFunc
-)
+
+	if err = sp.SetReadTimeout(ssm2.ConnectionReadTimeout); err != nil {
+		return nil, fmt.Errorf("setting serial port read timeout: %w", err)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return ssm2.NewConnection(sp, logger), nil
+}
+
+// listSerialPorts returns the names of the serial ports on the host.
+func listSerialPorts() ([]string, error) {
+	pl, err := enumerator.GetDetailedPortsList()
+	if err != nil {
+		return nil, err
+	}
+
+	ports := make([]string, len(pl))
+	for i, p := range pl {
+		ports[i] = p.Name
+	}
+	return ports, nil
+}
+
+func openFakeConnection(string) (ssm2.Connection, error) {
+	return ssm2.NewFakeConnection(time.Millisecond * 50), nil
+}

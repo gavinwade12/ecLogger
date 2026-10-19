@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"fyne.io/fyne/v2"
+	fyneApp "fyne.io/fyne/v2/app"
 	"github.com/gavinwade12/ecLogger/internal/config"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
@@ -20,11 +21,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if cfg.UseFakeConnection {
-		openSSM2Connection = fakeOpenFunc
-	}
 
-	app := NewApp(cfg)
+	app := NewApp(fyneApp.New(), cfg, openSerialConnection, listSerialPorts)
 
 	window := app.fyneApp.NewWindow("Logger")
 	window.Resize(fyne.NewSize(800, 400))
