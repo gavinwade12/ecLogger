@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 )
 
@@ -25,6 +26,25 @@ func TestListLayout(t *testing.T) {
 	}
 	if got, want := l.MinSize(objects), fyne.NewSize(10, 54); got != want {
 		t.Errorf("MinSize = %v, want %v", got, want)
+	}
+}
+
+func TestListLayoutMinSizeKeptUntilLayout(t *testing.T) {
+	test.NewTempApp(t)
+	tile := canvas.NewRectangle(nil)
+	tile.SetMinSize(fyne.NewSize(10, 30))
+	objects := []fyne.CanvasObject{tile}
+
+	l := newListLayout(0)
+	l.Layout(objects, fyne.NewSize(300, 0))
+	l.MinSize(objects)
+	tile.SetMinSize(fyne.NewSize(10, 50))
+	if got, want := l.MinSize(objects), fyne.NewSize(10, 30); got != want {
+		t.Errorf("MinSize before laying out again = %v, want %v", got, want)
+	}
+	l.Layout(objects, fyne.NewSize(300, 0))
+	if got, want := l.MinSize(objects), fyne.NewSize(10, 50); got != want {
+		t.Errorf("MinSize after laying out again = %v, want %v", got, want)
 	}
 }
 

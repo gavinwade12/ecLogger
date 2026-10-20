@@ -18,6 +18,13 @@ type listLayout struct {
 	width float32
 	// gap is the space between objects.
 	gap float32
+	// minSize is the MinSize since the last layout, if measured is set.
+	// A scroll asks for its content's MinSize several times each time it
+	// scrolls, and measuring every object each time makes scrolling lag.
+	// A container lays out again when its objects change or it's
+	// refreshed, which clears it.
+	minSize  fyne.Size
+	measured bool
 }
 
 func newListLayout(gap float32) *listLayout {
@@ -26,6 +33,7 @@ func newListLayout(gap float32) *listLayout {
 
 func (l *listLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 	l.width = size.Width
+	l.measured = false
 	var y float32
 	for _, o := range objects {
 		if !o.Visible() {
@@ -39,6 +47,9 @@ func (l *listLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 }
 
 func (l *listLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	if l.measured {
+		return l.minSize
+	}
 	var size fyne.Size
 	for _, o := range objects {
 		if !o.Visible() {
@@ -51,6 +62,7 @@ func (l *listLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 		size.Width = max(size.Width, min.Width)
 		size.Height += tileHeight(o, max(l.width, min.Width))
 	}
+	l.minSize, l.measured = size, true
 	return size
 }
 
