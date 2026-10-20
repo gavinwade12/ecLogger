@@ -12,7 +12,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gavinwade12/ecLogger/internal/logging"
@@ -46,7 +45,7 @@ func NewLoggingTab(app *App) *LoggingTab {
 		toolbar:   widget.NewToolbar(),
 		startBtn:  widget.NewToolbarAction(theme.MediaPlayIcon(), nil),
 		stopBtn:   widget.NewToolbarAction(theme.MediaStopIcon(), nil),
-		container: container.New(layout.NewGridLayout(3)),
+		container: container.New(newTileGridLayout()),
 		runner:    logging.NewRunner(app.loggedParams.Unit, logger),
 	}
 	loggingTab.startBtn.OnActivated = loggingTab.startFileLogging
@@ -58,7 +57,7 @@ func NewLoggingTab(app *App) *LoggingTab {
 }
 
 func (t *LoggingTab) Container() fyne.CanvasObject {
-	return container.NewBorder(t.toolbar, nil, nil, nil, container.NewVScroll(t.container))
+	return container.NewBorder(t.toolbar, nil, nil, nil, container.NewVScroll(container.NewPadded(t.container)))
 }
 
 // EnableLogging starts a logging session for the logged parameters. When
@@ -228,21 +227,7 @@ func (t *LoggingTab) updateLiveLogParameters() {
 	t.liveLogModelsMu.Unlock()
 
 	for _, m := range t.liveLogModels {
-		label := widget.NewLabel(m.Name)
-		label.Wrapping = fyne.TextWrapWord
-		t.container.Objects = append(t.container.Objects,
-			container.NewVBox(
-				label,
-				container.NewHBox(
-					widget.NewLabelWithData(m.CurrentValueBinding),
-					widget.NewLabelWithData(m.UnitBinding),
-				),
-				container.NewHBox(
-					widget.NewLabelWithData(m.MinValueBinding),
-					widget.NewLabel("/"),
-					widget.NewLabelWithData(m.MaxValueBinding),
-				),
-			))
+		t.container.Objects = append(t.container.Objects, newLiveLogTile(m))
 	}
 
 	t.container.Refresh()

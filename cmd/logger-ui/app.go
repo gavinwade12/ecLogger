@@ -53,6 +53,7 @@ func NewApp(fyneApp fyne.App, cfg *config.Config, open OpenFunc, listPorts func(
 		openConnection: open,
 		listPorts:      listPorts,
 	}
+	fyneApp.Settings().SetTheme(newAppTheme())
 
 	app.ConnectionTab = NewConnectionTab(app)
 	app.ParametersTab = NewParametersTab(app)
