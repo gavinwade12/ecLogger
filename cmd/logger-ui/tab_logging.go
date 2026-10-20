@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -102,28 +103,11 @@ func (t *LoggingTab) DisableLogging() {
 }
 
 func (t *LoggingTab) startFileLogging() {
-	// create the log directory if it doesn't already exist
-	logDir := t.app.config.LogDirectory
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
-		logger.Debugf("creating directory for file logging: %v\n", err)
-		return
-	}
-
-	// open the log file
-	logFileName := logging.FileName(t.app.config.LogFileNameFormat, t.app.ecu.ROM_ID, time.Now())
-	f, err := os.OpenFile(filepath.Join(logDir, logFileName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	f, csvWriter, err := t.openLogFile()
 	if err != nil {
-		logger.Debugf("opening file for logging: %v\n", err)
-		return
-	}
-
-	// write the file header with only the parameters logged to file;
-	// the session also reads the live logged ones
-	params, derived := t.app.loggedParams.FileLists()
-	csvWriter, err := logging.NewCSVWriter(f, params, derived, t.unitFor)
-	if err != nil {
-		logger.Debugf("writing log file header: %v\n", err)
-		f.Close()
+		logger.Debug(err.Error())
+		t.fileStatus.Importance = widget.DangerImportance
+		t.fileStatus.SetText("Couldn't log to file: " + err.Error())
 		return
 	}
 	t.logFile = f
@@ -134,13 +118,39 @@ func (t *LoggingTab) startFileLogging() {
 
 	t.startBtn.Hide()
 	t.stopBtn.Show()
-	t.fileStatus.SetText("Logging to " + logFileName)
+	t.fileStatus.Importance = widget.MediumImportance
+	t.fileStatus.SetText("Logging to " + filepath.Base(f.Name()))
 
 	t.runner.Subscribe("fileLogging", func(values map[string]ssm2.ParameterValue) {
 		if err := csvWriter.Write(time.Now(), values); err != nil {
 			logger.Debugf("writing log file row: %v\n", err)
 		}
 	})
+}
+
+// openLogFile creates a log file and writes its header.
+func (t *LoggingTab) openLogFile() (*os.File, *logging.CSVWriter, error) {
+	// create the log directory if it doesn't already exist
+	logDir := t.app.config.LogDirectory
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return nil, nil, fmt.Errorf("creating the log directory: %w", err)
+	}
+
+	logFileName := logging.FileName(t.app.config.LogFileNameFormat, t.app.ecu.ROM_ID, time.Now())
+	f, err := os.OpenFile(filepath.Join(logDir, logFileName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, nil, fmt.Errorf("opening the log file: %w", err)
+	}
+
+	// write the file header with only the parameters logged to file;
+	// the session also reads the live logged ones
+	params, derived := t.app.loggedParams.FileLists()
+	csvWriter, err := logging.NewCSVWriter(f, params, derived, t.unitFor)
+	if err != nil {
+		f.Close()
+		return nil, nil, fmt.Errorf("writing the log file header: %w", err)
+	}
+	return f, csvWriter, nil
 }
 
 func (t *LoggingTab) stopFileLogging() {

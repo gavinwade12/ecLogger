@@ -107,3 +107,35 @@ func TestLiveLogModelShowsPlaceholderUntilAValue(t *testing.T) {
 	m.Update(ssm2.ParameterValue{Value: 800, Unit: units.RPM}, logging.Stats{Min: 800, Max: 800, Count: 1})
 	check("800.00", string(units.RPM))
 }
+
+func TestFileLoggingShowsWhyItCouldntStart(t *testing.T) {
+	h := newTestApp(t)
+	h.connect()
+
+	// a log directory inside a file can't be created
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.config.LogDirectory = filepath.Join(file, "logs")
+
+	h.do(func() {
+		h.loggedParams.SetLogToFile("P9", false, units.MPH, true)
+		h.LoggingTab.onLoggedParametersChanged()
+		test.Tap(h.LoggingTab.startBtn)
+
+		if h.LoggingTab.logFile != nil || h.LoggingTab.stopBtn.Visible() {
+			t.Error("expected file logging not to start")
+		}
+		if got := h.LoggingTab.fileStatus.Text; !strings.HasPrefix(got, "Couldn't log to file: creating the log directory") {
+			t.Errorf("file status = %q, want why file logging couldn't start", got)
+		}
+
+		h.config.LogDirectory = t.TempDir()
+		test.Tap(h.LoggingTab.startBtn)
+		if got := h.LoggingTab.fileStatus.Text; !strings.HasPrefix(got, "Logging to ") {
+			t.Errorf("file status = %q after retrying, want the file being logged to", got)
+		}
+		test.Tap(h.LoggingTab.stopBtn)
+	})
+}
