@@ -68,7 +68,7 @@ func NewConnectionTab(app *App) *ConnectionTab {
 }
 
 func (t *ConnectionTab) Container() fyne.CanvasObject {
-	return t.container
+	return container.NewPadded(newMaxWidth(t.container))
 }
 
 func (t *ConnectionTab) OnConnectTapped() {

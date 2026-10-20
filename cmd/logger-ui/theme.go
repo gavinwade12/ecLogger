@@ -18,6 +18,9 @@ const (
 	// sizeNameTileDetailText is the text size of a tile's details, like
 	// its min and max.
 	sizeNameTileDetailText fyne.ThemeSizeName = "tileDetailText"
+	// sizeNameFormMaxWidth is the widest a form gets, so its inputs don't
+	// stretch across a wide screen.
+	sizeNameFormMaxWidth fyne.ThemeSizeName = "formMaxWidth"
 
 	// colorNameTile is the background of a tile.
 	colorNameTile fyne.ThemeColorName = "tile"
@@ -53,6 +56,8 @@ func (t appTheme) Size(name fyne.ThemeSizeName) float32 {
 		return 28
 	case sizeNameTileDetailText:
 		return 12
+	case sizeNameFormMaxWidth:
+		return 560
 	}
 	return t.Theme.Size(name)
 }

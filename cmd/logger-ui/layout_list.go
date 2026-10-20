@@ -190,3 +190,28 @@ func (r *columnsRowRenderer) Refresh() {
 }
 
 func (r *columnsRowRenderer) Destroy() {}
+
+// maxWidthLayout lays objects out at its full height and the full width,
+// up to sizeNameFormMaxWidth, on its leading edge.
+type maxWidthLayout struct{}
+
+// newMaxWidth returns content no wider than sizeNameFormMaxWidth.
+func newMaxWidth(content fyne.CanvasObject) *fyne.Container {
+	return container.New(maxWidthLayout{}, content)
+}
+
+func (maxWidthLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	width := min(size.Width, theme.Size(sizeNameFormMaxWidth))
+	for _, o := range objects {
+		o.Move(fyne.NewPos(0, 0))
+		o.Resize(fyne.NewSize(width, size.Height))
+	}
+}
+
+func (maxWidthLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	var size fyne.Size
+	for _, o := range objects {
+		size = size.Max(o.MinSize())
+	}
+	return size
+}

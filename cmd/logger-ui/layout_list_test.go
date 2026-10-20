@@ -51,3 +51,18 @@ func TestColumnsLayout(t *testing.T) {
 		t.Errorf("heightForWidth = %v, want %v", got, want)
 	}
 }
+
+func TestMaxWidthLayout(t *testing.T) {
+	test.NewTempApp(t).Settings().SetTheme(newAppTheme())
+	content := newTestTile(20)
+	c := newMaxWidth(content)
+
+	c.Resize(fyne.NewSize(300, 100))
+	if got, want := content.Size(), fyne.NewSize(300, 100); got != want {
+		t.Errorf("content in a narrow container sized %v, want %v", got, want)
+	}
+	c.Resize(fyne.NewSize(2000, 100))
+	if got, want := content.Size(), fyne.NewSize(560, 100); got != want {
+		t.Errorf("content in a wide container sized %v, want %v", got, want)
+	}
+}

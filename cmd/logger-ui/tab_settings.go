@@ -2,6 +2,7 @@ package main
 
 import (
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
 )
@@ -37,5 +38,5 @@ func NewSettingsTab(app *App) *SettingsTab {
 }
 
 func (t *SettingsTab) Container() fyne.CanvasObject {
-	return t.form
+	return container.NewPadded(newMaxWidth(container.NewVBox(t.form)))
 }
