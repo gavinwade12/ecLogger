@@ -17,12 +17,15 @@ var settingsFormItems = []func(app *App) []*widget.FormItem{
 		return []*widget.FormItem{
 			widget.NewFormItem("Log Directory", widget.NewEntryWithData(
 				binding.BindString(&app.config.LogDirectory))),
-			widget.NewFormItem("Log File Name Format", widget.NewEntryWithData(
-				binding.BindString(&app.config.LogFileNameFormat))),
-			widget.NewFormItem("Auto Connect", widget.NewCheckWithData("",
-				binding.BindBool(&app.config.AutoConnect))),
-			widget.NewFormItem("Default to Logging Tab", widget.NewCheckWithData(
-				"", binding.BindBool(&app.config.DefaultToLoggingTab))),
+			newFormItemWithHint("Log File Name Format", widget.NewEntryWithData(
+				binding.BindString(&app.config.LogFileNameFormat)),
+				"{{romId}} and {{timestamp}} are filled in for each log"),
+			newFormItemWithHint("Auto Connect", widget.NewCheckWithData("",
+				binding.BindBool(&app.config.AutoConnect)),
+				"Connect to the selected port when the app starts"),
+			newFormItemWithHint("Default to Logging Tab", widget.NewCheckWithData(
+				"", binding.BindBool(&app.config.DefaultToLoggingTab)),
+				"Open on the Logging tab when the app starts"),
 		}
 	},
 }
@@ -39,4 +42,11 @@ func NewSettingsTab(app *App) *SettingsTab {
 
 func (t *SettingsTab) Container() fyne.CanvasObject {
 	return container.NewPadded(newMaxWidth(container.NewVBox(t.form)))
+}
+
+// newFormItemWithHint returns a form item with hint shown under it.
+func newFormItemWithHint(text string, w fyne.CanvasObject, hint string) *widget.FormItem {
+	item := widget.NewFormItem(text, w)
+	item.HintText = hint
+	return item
 }
