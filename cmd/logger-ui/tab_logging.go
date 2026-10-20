@@ -22,9 +22,12 @@ import (
 type LoggingTab struct {
 	app *App
 
-	toolbar  *widget.Toolbar
-	startBtn *widget.ToolbarAction
-	stopBtn  *widget.ToolbarAction
+	// header holds the file logging controls, and is hidden when nothing
+	// is logged to file
+	header     *fyne.Container
+	startBtn   *widget.Button
+	stopBtn    *widget.Button
+	fileStatus *widget.Label
 
 	container *fyne.Container
 
@@ -41,15 +44,21 @@ type LoggingTab struct {
 
 func NewLoggingTab(app *App) *LoggingTab {
 	loggingTab := &LoggingTab{
-		app:       app,
-		toolbar:   widget.NewToolbar(),
-		startBtn:  widget.NewToolbarAction(theme.MediaPlayIcon(), nil),
-		stopBtn:   widget.NewToolbarAction(theme.MediaStopIcon(), nil),
-		container: container.New(newTileGridLayout()),
-		runner:    logging.NewRunner(app.loggedParams.Unit, logger),
+		app:        app,
+		startBtn:   widget.NewButtonWithIcon("Log To File", theme.NewErrorThemedResource(theme.MediaRecordIcon()), nil),
+		stopBtn:    widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), nil),
+		fileStatus: widget.NewLabel(""),
+		container:  container.New(newTileGridLayout()),
+		runner:     logging.NewRunner(app.loggedParams.Unit, logger),
 	}
-	loggingTab.startBtn.OnActivated = loggingTab.startFileLogging
-	loggingTab.stopBtn.OnActivated = loggingTab.stopFileLogging
+	loggingTab.stopBtn.Importance = widget.DangerImportance
+	loggingTab.stopBtn.Hide()
+	loggingTab.fileStatus.Truncation = fyne.TextTruncateEllipsis
+	loggingTab.header = container.NewPadded(container.NewBorder(nil, nil,
+		container.NewHBox(loggingTab.startBtn, loggingTab.stopBtn), nil,
+		loggingTab.fileStatus))
+	loggingTab.startBtn.OnTapped = loggingTab.startFileLogging
+	loggingTab.stopBtn.OnTapped = loggingTab.stopFileLogging
 	loggingTab.runner.Subscribe("liveLogModels", loggingTab.updateLiveLogModelValues)
 	loggingTab.onLoggedParametersChanged()
 
@@ -57,7 +66,7 @@ func NewLoggingTab(app *App) *LoggingTab {
 }
 
 func (t *LoggingTab) Container() fyne.CanvasObject {
-	return container.NewBorder(t.toolbar, nil, nil, nil, container.NewVScroll(container.NewPadded(t.container)))
+	return container.NewBorder(t.header, nil, nil, nil, container.NewVScroll(container.NewPadded(t.container)))
 }
 
 // EnableLogging starts a logging session for the logged parameters. When
@@ -123,9 +132,9 @@ func (t *LoggingTab) startFileLogging() {
 	// to keep file results consistent
 	t.app.ParametersTab.toggleParameterChanges(false)
 
-	// remove the start button from the toolbar and add the stop button
-	t.toolbar.Items = []widget.ToolbarItem{}
-	t.toolbar.Append(t.stopBtn)
+	t.startBtn.Hide()
+	t.stopBtn.Show()
+	t.fileStatus.SetText("Logging to " + logFileName)
 
 	t.runner.Subscribe("fileLogging", func(values map[string]ssm2.ParameterValue) {
 		if err := csvWriter.Write(time.Now(), values); err != nil {
@@ -143,9 +152,9 @@ func (t *LoggingTab) stopFileLogging() {
 	// re-enable all the parameter input
 	t.app.ParametersTab.toggleParameterChanges(true)
 
-	// remove the stop button from the toolbar and add the start button
-	t.toolbar.Items = []widget.ToolbarItem{}
-	t.toolbar.Append(t.startBtn)
+	t.stopBtn.Hide()
+	t.startBtn.Show()
+	t.fileStatus.SetText("")
 }
 
 // unitFor returns the configured unit for a logged parameter.
@@ -239,13 +248,9 @@ func (t *LoggingTab) updateLiveLogParameters() {
 func (t *LoggingTab) onLoggedParametersChanged() {
 	params, derived := t.app.loggedParams.FileLists()
 	if len(params)+len(derived) > 0 {
-		if len(t.toolbar.Items) == 0 {
-			t.toolbar.Append(t.startBtn)
-		}
+		t.header.Show()
 	} else {
-		if len(t.toolbar.Items) > 0 {
-			t.toolbar.Items = []widget.ToolbarItem{}
-		}
+		t.header.Hide()
 	}
 }
 

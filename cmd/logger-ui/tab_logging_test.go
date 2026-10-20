@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2/test"
 	"github.com/gavinwade12/ecLogger/internal/logging"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/gavinwade12/ecLogger/units"
@@ -42,19 +44,32 @@ func TestFileLoggingOnlyIncludesFileParams(t *testing.T) {
 	h.do(func() {
 		h.loggedParams.SetLiveLog("P8", false, units.RPM, true)
 		h.LoggingTab.onLoggedParametersChanged()
-		if len(h.LoggingTab.toolbar.Items) != 0 {
-			t.Fatal("expected no Start button when nothing logs to file")
+		if h.LoggingTab.header.Visible() {
+			t.Fatal("expected no file logging controls when nothing logs to file")
 		}
 
 		h.loggedParams.SetLogToFile("P9", false, units.MPH, true)
 		h.LoggingTab.onLoggedParametersChanged()
-		if len(h.LoggingTab.toolbar.Items) != 1 {
-			t.Fatal("expected the Start button once a parameter logs to file")
+		if !h.LoggingTab.header.Visible() || !h.LoggingTab.startBtn.Visible() {
+			t.Fatal("expected the Log To File button once a parameter logs to file")
 		}
 
 		h.LoggingTab.updateLiveLogParameters()
-		h.LoggingTab.startFileLogging()
-		h.LoggingTab.stopFileLogging()
+		test.Tap(h.LoggingTab.startBtn)
+		if h.LoggingTab.startBtn.Visible() || !h.LoggingTab.stopBtn.Visible() {
+			t.Error("expected Stop in place of Log To File while logging to file")
+		}
+		if got := h.LoggingTab.fileStatus.Text; !strings.HasPrefix(got, "Logging to ") {
+			t.Errorf("file status = %q, want the file being logged to", got)
+		}
+
+		test.Tap(h.LoggingTab.stopBtn)
+		if !h.LoggingTab.startBtn.Visible() || h.LoggingTab.stopBtn.Visible() {
+			t.Error("expected Log To File in place of Stop after stopping")
+		}
+		if got := h.LoggingTab.fileStatus.Text; got != "" {
+			t.Errorf("file status = %q after stopping, want none", got)
+		}
 	})
 
 	files, err := filepath.Glob(filepath.Join(h.config.LogDirectory, "*"))
