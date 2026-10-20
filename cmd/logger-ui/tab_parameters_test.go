@@ -4,7 +4,9 @@ import (
 	"reflect"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gavinwade12/ecLogger/internal/logging"
 	"github.com/gavinwade12/ecLogger/units"
@@ -37,12 +39,18 @@ func TestFileLoggingDisablesParameterChanges(t *testing.T) {
 				t.Fatalf("%T enabled while file logging", input)
 			}
 		}
+		if !h.ParametersTab.locked.Visible() {
+			t.Error("expected a hint saying why parameters can't be changed")
+		}
 
 		h.LoggingTab.stopFileLogging()
 		for _, input := range h.ParametersTab.inputs {
 			if input.Disabled() {
 				t.Fatalf("%T disabled after file logging", input)
 			}
+		}
+		if h.ParametersTab.locked.Visible() {
+			t.Error("expected no hint once parameters can be changed")
 		}
 	})
 }
@@ -106,4 +114,22 @@ func TestUnitChangeResetsLiveLogMinMax(t *testing.T) {
 			t.Errorf("min/max kept %d values across the unit change, want a fresh session", after.Count)
 		}
 	})
+}
+
+func TestParameterColumnsFitTheirUnits(t *testing.T) {
+	test.NewTempApp(t)
+	widths := columnWidths([][]string{{"V"}, {"raw ecu value"}})
+	if len(widths) != 3 {
+		t.Fatalf("got %d column widths, want 3", len(widths))
+	}
+
+	text := fyne.MeasureText("raw ecu value", theme.TextSize(), fyne.TextStyle{}).Width
+	if widths[2] < text+theme.InnerPadding()*2 {
+		t.Errorf("unit column is %v wide, too narrow for %q (%v)", widths[2], "raw ecu value", text)
+	}
+	for i, heading := range []string{headingLogToFile, headingLiveLog} {
+		if w := fyne.MeasureText(heading, theme.TextSize(), fyne.TextStyle{}).Width; widths[i] < w {
+			t.Errorf("%q column is %v wide, want at least %v", heading, widths[i], w)
+		}
+	}
 }

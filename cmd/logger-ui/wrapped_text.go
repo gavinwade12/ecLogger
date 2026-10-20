@@ -17,6 +17,7 @@ type wrappedText struct {
 	sizeName  fyne.ThemeSizeName
 	colorName fyne.ThemeColorName
 	style     fyne.TextStyle
+	alignment fyne.TextAlign
 }
 
 func newWrappedText(text string, sizeName fyne.ThemeSizeName, colorName fyne.ThemeColorName) *wrappedText {
@@ -78,8 +79,15 @@ func (r *wrappedTextRenderer) Layout(size fyne.Size) {
 		line.Text = s
 		line.TextStyle = r.text.style
 		styleText(line, th, r.text.sizeName, r.text.colorName)
-		line.Move(fyne.NewPos(0, float32(i)*lineHeight))
 		line.Resize(line.MinSize())
+		var x float32
+		switch r.text.alignment {
+		case fyne.TextAlignCenter:
+			x = (size.Width - line.Size().Width) / 2
+		case fyne.TextAlignTrailing:
+			x = size.Width - line.Size().Width
+		}
+		line.Move(fyne.NewPos(x, float32(i)*lineHeight))
 	}
 }
 
