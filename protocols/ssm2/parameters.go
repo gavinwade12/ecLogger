@@ -279,9 +279,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
+			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P11": {
 		Id:                  "P11",
@@ -474,9 +474,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
+			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P24": {
 		Id:                  "P24",
@@ -564,9 +564,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degress}
+			return ParameterValue{(float32(v[0]) - 128) / 2, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P30": {
 		Id:                  "P30",
@@ -849,9 +849,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, units.Degress}
+			return ParameterValue{float32(v[0]) - 50, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P49": {
 		Id:                  "P49",
@@ -864,9 +864,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, units.Degress}
+			return ParameterValue{float32(v[0]) - 50, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P50": {
 		Id:                  "P50",
@@ -1374,9 +1374,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, units.Degress}
+			return ParameterValue{float32(v[0]) - 50, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P84": {
 		Id:                  "P84",
@@ -1389,9 +1389,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, units.Degress}
+			return ParameterValue{float32(v[0]) - 50, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P85": {
 		Id:                  "P85",
@@ -1494,9 +1494,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{(float32(v[0]) * 0.25) - 32, units.Degress}
+			return ParameterValue{(float32(v[0]) * 0.25) - 32, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P92": {
 		Id:                  "P92",
@@ -2349,9 +2349,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]), units.Degress}
+			return ParameterValue{float32(v[0]), units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P149": {
 		Id:                  "P149",
@@ -2424,9 +2424,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) / 16, units.Degress}
+			return ParameterValue{float32(v[0]) / 16, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P154": {
 		Id:                  "P154",
@@ -2544,9 +2544,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, units.Degress}
+			return ParameterValue{float32(v[0]) - 50, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P162": {
 		Id:                  "P162",
@@ -2559,9 +2559,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{float32(v[0]) - 50, units.Degress}
+			return ParameterValue{float32(v[0]) - 50, units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P163": {
 		Id:                  "P163",
@@ -3594,9 +3594,9 @@ var Parameters = map[string]Parameter{
 			Length:  1,
 		},
 		Value: func(v []byte) ParameterValue {
-			return ParameterValue{0 - float32(v[0]), units.Degress}
+			return ParameterValue{0 - float32(v[0]), units.Degrees}
 		},
-		DefaultUnit: units.Degress,
+		DefaultUnit: units.Degrees,
 	},
 	"P240": {
 		Id:                  "P240",

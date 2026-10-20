@@ -1,6 +1,9 @@
 package units
 
-import "errors"
+import (
+	"errors"
+	"sort"
+)
 
 // Unit provides common values for units used to describe a parameter's value.
 type Unit string
@@ -19,7 +22,7 @@ const (
 	RPM Unit = "rpm"
 
 	// Timing
-	Degress Unit = "degrees"
+	Degrees Unit = "degrees"
 
 	// Temperature
 	F Unit = "F"
@@ -82,6 +85,8 @@ const (
 // ErrorInvalidConversion is returned when an invalid unit conversion attempt is made.
 var ErrorInvalidConversion = errors.New("units are invalid for conversion")
 
+// Convert converts value from one unit to another. ErrorInvalidConversion is
+// returned when no conversion is defined between the two units.
 func Convert(value float32, from, to Unit) (float32, error) {
 	cvs := UnitConversions[from]
 	if cvs == nil {
@@ -94,6 +99,16 @@ func Convert(value float32, from, to Unit) (float32, error) {
 	}
 
 	return cv(value), nil
+}
+
+// ConvertibleTo returns the units that u can be converted to, sorted by name.
+func ConvertibleTo(u Unit) []Unit {
+	targets := make([]Unit, 0, len(UnitConversions[u]))
+	for t := range UnitConversions[u] {
+		targets = append(targets, t)
+	}
+	sort.Slice(targets, func(i, j int) bool { return targets[i] < targets[j] })
+	return targets
 }
 
 // UnitConversions provides conversion functions for the package-defined Units.
