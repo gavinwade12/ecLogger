@@ -1,8 +1,6 @@
 package main
 
 import (
-	"strings"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/data/binding"
@@ -15,21 +13,25 @@ import (
 type liveLogTile struct {
 	widget.BaseWidget
 	model *liveLogModel
+	name  *wrappedText
 }
 
 func newLiveLogTile(m *liveLogModel) *liveLogTile {
-	t := &liveLogTile{model: m}
+	t := &liveLogTile{
+		model: m,
+		name:  newWrappedText(m.Name, theme.SizeNameText, theme.ColorNameForeground),
+	}
 	t.ExtendBaseWidget(t)
 	return t
 }
 
 // tileMetrics are the sizes a tile is laid out with.
 type tileMetrics struct {
-	padding, gap               float32
-	textSize, valueSize        float32
-	detailSize                 float32
-	lineHeight, valueHeight    float32
-	detailHeight, minTileWidth float32
+	padding, gap              float32
+	textSize, valueSize       float32
+	detailSize                float32
+	valueHeight, detailHeight float32
+	minTileWidth              float32
 }
 
 func (t *liveLogTile) metrics() tileMetrics {
@@ -42,7 +44,6 @@ func (t *liveLogTile) metrics() tileMetrics {
 		detailSize:   th.Size(sizeNameTileDetailText),
 		minTileWidth: th.Size(sizeNameTileMinWidth),
 	}
-	m.lineHeight = fyne.MeasureText("Ag", m.textSize, fyne.TextStyle{}).Height
 	m.valueHeight = fyne.MeasureText("0", m.valueSize, valueStyle).Height
 	m.detailHeight = fyne.MeasureText("0", m.detailSize, fyne.TextStyle{}).Height
 	return m
@@ -54,8 +55,7 @@ var valueStyle = fyne.TextStyle{Bold: true}
 // how many lines its name wraps to.
 func (t *liveLogTile) heightForWidth(width float32) float32 {
 	m := t.metrics()
-	lines := wrapText(t.model.Name, width-m.padding*2, m.textSize, fyne.TextStyle{})
-	return m.padding + float32(len(lines))*m.lineHeight + m.gap*2 +
+	return m.padding + t.name.heightForWidth(width-m.padding*2) + m.gap*2 +
 		m.valueHeight + m.gap + m.detailHeight + m.padding
 }
 
@@ -88,10 +88,8 @@ func (t *liveLogTile) CreateRenderer() fyne.WidgetRenderer {
 }
 
 type liveLogTileRenderer struct {
-	tile       *liveLogTile
-	background *canvas.Rectangle
-	// name holds a line of text for each line the name wraps to
-	name                         []*canvas.Text
+	tile                         *liveLogTile
+	background                   *canvas.Rectangle
 	value, unit                  *canvas.Text
 	minLabel, min, maxLabel, max *canvas.Text
 	listeners                    []binding.DataListener
@@ -125,11 +123,9 @@ func (r *liveLogTileRenderer) Layout(size fyne.Size) {
 	m := r.tile.metrics()
 	r.background.Resize(size)
 
-	lines := wrapText(r.tile.model.Name, size.Width-m.padding*2, m.textSize, fyne.TextStyle{})
-	r.setNameLines(lines)
-	for i, line := range r.name {
-		line.Move(fyne.NewPos(m.padding, m.padding+float32(i)*m.lineHeight))
-	}
+	nameWidth := size.Width - m.padding*2
+	r.tile.name.Move(fyne.NewPos(m.padding, m.padding))
+	r.tile.name.Resize(fyne.NewSize(nameWidth, r.tile.name.heightForWidth(nameWidth)))
 
 	// the value and details sit at the bottom, so they line up across a
 	// row of tiles whose names wrap to different numbers of lines
@@ -160,27 +156,8 @@ func (r *liveLogTileRenderer) Layout(size fyne.Size) {
 	}
 }
 
-// setNameLines shows lines as the name, reusing the existing line texts.
-func (r *liveLogTileRenderer) setNameLines(lines []string) {
-	for len(r.name) < len(lines) {
-		line := canvas.NewText("", nil)
-		styleText(line, r.tile.Theme(), theme.SizeNameText, theme.ColorNameForeground)
-		r.name = append(r.name, line)
-	}
-	r.name = r.name[:len(lines)]
-	for i, s := range lines {
-		r.name[i].Text = s
-	}
-}
-
-func styleText(text *canvas.Text, th fyne.Theme, size fyne.ThemeSizeName, color fyne.ThemeColorName) {
-	v := fyne.CurrentApp().Settings().ThemeVariant()
-	text.TextSize = th.Size(size)
-	text.Color = th.Color(color, v)
-}
-
 func (r *liveLogTileRenderer) texts() []*canvas.Text {
-	return append([]*canvas.Text{r.value, r.unit, r.minLabel, r.min, r.maxLabel, r.max}, r.name...)
+	return []*canvas.Text{r.value, r.unit, r.minLabel, r.min, r.maxLabel, r.max}
 }
 
 func (r *liveLogTileRenderer) MinSize() fyne.Size {
@@ -188,7 +165,7 @@ func (r *liveLogTileRenderer) MinSize() fyne.Size {
 }
 
 func (r *liveLogTileRenderer) Objects() []fyne.CanvasObject {
-	objects := []fyne.CanvasObject{r.background}
+	objects := []fyne.CanvasObject{r.background, r.tile.name}
 	for _, t := range r.texts() {
 		objects = append(objects, t)
 	}
@@ -207,36 +184,10 @@ func (r *liveLogTileRenderer) Refresh() {
 	styleText(r.min, th, sizeNameTileDetailText, theme.ColorNameForeground)
 	styleText(r.maxLabel, th, sizeNameTileDetailText, colorNameSecondaryText)
 	styleText(r.max, th, sizeNameTileDetailText, theme.ColorNameForeground)
-	for _, line := range r.name {
-		styleText(line, th, theme.SizeNameText, theme.ColorNameForeground)
-	}
 
 	r.Layout(r.tile.Size())
 	r.background.Refresh()
 	for _, t := range r.texts() {
 		t.Refresh()
 	}
-}
-
-// wrapText splits text into lines at spaces so each line fits in width.
-// A word too long for a line gets a line to itself.
-func wrapText(text string, width, size float32, style fyne.TextStyle) []string {
-	var lines []string
-	line := ""
-	for _, word := range strings.Fields(text) {
-		next := word
-		if line != "" {
-			next = line + " " + word
-		}
-		if line == "" || fyne.MeasureText(next, size, style).Width <= width {
-			line = next
-			continue
-		}
-		lines = append(lines, line)
-		line = word
-	}
-	if line != "" || len(lines) == 0 {
-		lines = append(lines, line)
-	}
-	return lines
 }

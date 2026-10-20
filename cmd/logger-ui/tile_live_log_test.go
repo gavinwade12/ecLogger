@@ -11,26 +11,6 @@ import (
 	"github.com/gavinwade12/ecLogger/units"
 )
 
-func TestWrapText(t *testing.T) {
-	test.NewTempApp(t)
-	width := fyne.MeasureText("Quantity Correction", 14, fyne.TextStyle{}).Width
-
-	for _, tt := range []struct {
-		text string
-		want []string
-	}{
-		{"", []string{""}},
-		{"Engine Speed", []string{"Engine Speed"}},
-		{"Quantity Correction Cylinder #1", []string{"Quantity Correction", "Cylinder #1"}},
-		// a word too long for a line overflows rather than being split
-		{"Roughness QuantityCorrectionCylinder", []string{"Roughness", "QuantityCorrectionCylinder"}},
-	} {
-		if got := wrapText(tt.text, width, 14, fyne.TextStyle{}); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("wrapText(%q) = %q, want %q", tt.text, got, tt.want)
-		}
-	}
-}
-
 func TestLiveLogTileHeightGrowsWithItsName(t *testing.T) {
 	test.NewTempApp(t).Settings().SetTheme(newAppTheme())
 	short := newLiveLogTile(newLiveLogModel("P8", "Engine Speed"))
@@ -66,9 +46,6 @@ func TestLiveLogTileShowsTheModel(t *testing.T) {
 			got := []string{r.value.Text, r.unit.Text, r.min.Text, r.max.Text}
 			if want := []string{wantValue, wantUnit, wantMin, wantMax}; !reflect.DeepEqual(got, want) {
 				t.Errorf("value, unit, min, max = %q, want %q", got, want)
-			}
-			if r.name[0].Text != "Engine Speed" {
-				t.Errorf("name = %q, want %q", r.name[0].Text, "Engine Speed")
 			}
 		})
 	}
