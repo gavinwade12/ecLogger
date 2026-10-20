@@ -170,6 +170,7 @@ func (t *ConnectionTab) openAndInitConnection(ctx context.Context, open OpenFunc
 	}
 	fyne.Do(func() {
 		cleanup()
+		t.connectBtn.Hide()
 		t.disconnectBtn.Show()
 		t.connectionState.Set("Connected")
 	})
@@ -246,6 +247,7 @@ func (t *ConnectionTab) onDisconnect() {
 	t.serialPortSelect.Enable()
 	t.startSerialPortQuery()
 	t.connectBtn.Enable()
+	t.connectBtn.Show()
 	t.connectionState.Set("Disconnected")
 }
 

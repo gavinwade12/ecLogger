@@ -162,8 +162,8 @@ func TestConnectEnablesTabs(t *testing.T) {
 		}
 	}
 	h.do(func() {
-		if !h.ConnectionTab.connectBtn.Disabled() || !h.ConnectionTab.disconnectBtn.Visible() {
-			t.Error("expected Connect disabled and Disconnect visible")
+		if h.ConnectionTab.connectBtn.Visible() || !h.ConnectionTab.disconnectBtn.Visible() {
+			t.Error("expected Disconnect in place of Connect")
 		}
 	})
 }
@@ -175,8 +175,9 @@ func TestDisconnect(t *testing.T) {
 	h.do(func() { test.Tap(h.ConnectionTab.disconnectBtn) })
 	h.waitForState("Disconnected")
 	h.do(func() {
-		if h.ConnectionTab.connectBtn.Disabled() || h.ConnectionTab.disconnectBtn.Visible() {
-			t.Error("expected Connect enabled and Disconnect hidden")
+		if !h.ConnectionTab.connectBtn.Visible() || h.ConnectionTab.connectBtn.Disabled() ||
+			h.ConnectionTab.disconnectBtn.Visible() {
+			t.Error("expected Connect enabled in place of Disconnect")
 		}
 		if h.connection != nil {
 			t.Error("expected the connection to be cleared")
