@@ -31,6 +31,9 @@ type LoggingTab struct {
 	fileStatus *widget.Label
 
 	container *fyne.Container
+	// empty explains how to live log parameters when none are
+	empty           fyne.CanvasObject
+	chooseParamsBtn *widget.Button
 
 	runner *logging.Runner
 	// paused keeps the logging session stopped while the connection is
@@ -55,6 +58,13 @@ func NewLoggingTab(app *App) *LoggingTab {
 	loggingTab.stopBtn.Importance = widget.DangerImportance
 	loggingTab.stopBtn.Hide()
 	loggingTab.fileStatus.Truncation = fyne.TextTruncateEllipsis
+	loggingTab.chooseParamsBtn = widget.NewButton("Choose Parameters", func() {
+		app.SelectTab(TabParameters)
+	})
+	loggingTab.empty = container.NewCenter(container.NewVBox(
+		newHint("No parameters are live logged"),
+		container.NewCenter(loggingTab.chooseParamsBtn),
+	))
 	loggingTab.header = container.NewPadded(container.NewBorder(nil, nil,
 		container.NewHBox(loggingTab.startBtn, loggingTab.stopBtn), nil,
 		loggingTab.fileStatus))
@@ -67,7 +77,10 @@ func NewLoggingTab(app *App) *LoggingTab {
 }
 
 func (t *LoggingTab) Container() fyne.CanvasObject {
-	return container.NewBorder(t.header, nil, nil, nil, container.NewVScroll(container.NewPadded(t.container)))
+	return container.NewBorder(t.header, nil, nil, nil, container.NewStack(
+		container.NewVScroll(container.NewPadded(t.container)),
+		t.empty,
+	))
 }
 
 // EnableLogging starts a logging session for the logged parameters. When
@@ -224,6 +237,7 @@ func (t *LoggingTab) updateLiveLogParameters() {
 	if t.app.connection == nil {
 		t.liveLogModelsMu.Unlock()
 		t.container.Refresh()
+		t.empty.Show()
 		return
 	}
 
@@ -247,6 +261,11 @@ func (t *LoggingTab) updateLiveLogParameters() {
 
 	for _, m := range t.liveLogModels {
 		t.container.Objects = append(t.container.Objects, newLiveLogTile(m))
+	}
+	if len(t.liveLogModels) == 0 {
+		t.empty.Show()
+	} else {
+		t.empty.Hide()
 	}
 
 	t.container.Refresh()

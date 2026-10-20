@@ -139,3 +139,31 @@ func TestFileLoggingShowsWhyItCouldntStart(t *testing.T) {
 		test.Tap(h.LoggingTab.stopBtn)
 	})
 }
+
+func TestLiveLogExplainsWhenNothingIsLiveLogged(t *testing.T) {
+	h := newTestApp(t)
+	h.connect()
+
+	h.do(func() {
+		if !h.LoggingTab.empty.Visible() {
+			t.Fatal("expected a hint when nothing is live logged")
+		}
+
+		h.loggedParams.SetLiveLog("P8", false, units.RPM, true)
+		h.LoggingTab.updateLiveLogParameters()
+		if h.LoggingTab.empty.Visible() {
+			t.Error("expected no hint once a parameter is live logged")
+		}
+
+		h.loggedParams.SetLiveLog("P8", false, units.RPM, false)
+		h.LoggingTab.updateLiveLogParameters()
+		if !h.LoggingTab.empty.Visible() {
+			t.Fatal("expected the hint once nothing is live logged again")
+		}
+
+		test.Tap(h.LoggingTab.chooseParamsBtn)
+		if got := h.tabItems.SelectedIndex(); got != int(TabParameters) {
+			t.Errorf("selected tab = %d, want the Parameters tab", got)
+		}
+	})
+}
