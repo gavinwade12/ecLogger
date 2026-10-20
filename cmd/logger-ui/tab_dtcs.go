@@ -22,16 +22,17 @@ type DTCsTab struct {
 
 	grid       *fyne.Container
 	refreshBtn *widget.Button
-	status     *widget.Label
+	status     *hint
 }
 
 func NewDTCsTab(app *App) *DTCsTab {
 	tab := &DTCsTab{
 		app:    app,
 		grid:   container.NewGridWithColumns(2),
-		status: widget.NewLabel(""),
+		status: newHint(""),
 	}
 	tab.refreshBtn = widget.NewButton("Refresh", tab.refresh)
+	tab.status.Wrapping = fyne.TextWrapWord
 	tab.status.Hide()
 	return tab
 }
@@ -93,7 +94,8 @@ func (t *DTCsTab) readAll(conn ssm2.Connection) (setDTCs, storedDTCs []ssm2.DTC,
 func (t *DTCsTab) showDTCs(setDTCs, storedDTCs []ssm2.DTC, err error) {
 	if err != nil {
 		logger.Debug(err.Error())
-		t.setStatus("Couldn't read the DTCs: " + err.Error())
+		t.status.SetError("Couldn't read the DTCs: " + err.Error())
+		t.status.Show()
 		return
 	}
 	if len(setDTCs) == 0 && len(storedDTCs) == 0 {

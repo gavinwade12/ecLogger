@@ -5,7 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 	"github.com/gavinwade12/ecLogger/units"
 )
@@ -69,18 +71,19 @@ func TestDTCRefreshShowsDTCs(t *testing.T) {
 			t.Fatalf("grid has %d objects, want 6", n)
 		}
 		if h.DTCsTab.status.Visible() {
-			t.Errorf("unexpected status %q", h.DTCsTab.status.Text)
+			t.Errorf("unexpected status %q", h.DTCsTab.status.Text())
 		}
 	})
 }
 
 func TestDTCRefreshStatus(t *testing.T) {
 	tests := map[string]struct {
-		err  error
-		want string
+		err       error
+		want      string
+		wantColor fyne.ThemeColorName
 	}{
-		"none":  {nil, "No DTCs found"},
-		"error": {errors.New("boom"), "Couldn't read the DTCs: reading set DTCs: sending read addresses request: boom"},
+		"none":  {nil, "No DTCs found", colorNameSecondaryText},
+		"error": {errors.New("boom"), "Couldn't read the DTCs: reading set DTCs: sending read addresses request: boom", theme.ColorNameError},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -90,9 +93,12 @@ func TestDTCRefreshStatus(t *testing.T) {
 
 			h.refreshDTCs()
 			h.do(func() {
-				if !h.DTCsTab.status.Visible() || h.DTCsTab.status.Text != tt.want {
+				if !h.DTCsTab.status.Visible() || h.DTCsTab.status.Text() != tt.want {
 					t.Errorf("status = %q (visible %v), want %q",
-						h.DTCsTab.status.Text, h.DTCsTab.status.Visible(), tt.want)
+						h.DTCsTab.status.Text(), h.DTCsTab.status.Visible(), tt.want)
+				}
+				if got := h.DTCsTab.status.segment.Style.ColorName; got != tt.wantColor {
+					t.Errorf("status color = %q, want %q", got, tt.wantColor)
 				}
 			})
 		})
@@ -108,7 +114,7 @@ func TestDTCRefreshDoesNotBlockTheUI(t *testing.T) {
 	// with the reads blocked, the tap must still return
 	h.do(func() { test.Tap(h.DTCsTab.refreshBtn) })
 	h.do(func() {
-		if !h.DTCsTab.refreshBtn.Disabled() || h.DTCsTab.status.Text != "Reading DTCs..." {
+		if !h.DTCsTab.refreshBtn.Disabled() || h.DTCsTab.status.Text() != "Reading DTCs..." {
 			t.Error("expected Refresh disabled while reading")
 		}
 	})
