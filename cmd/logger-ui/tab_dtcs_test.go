@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -67,8 +68,22 @@ func TestDTCRefreshShowsDTCs(t *testing.T) {
 
 	h.refreshDTCs()
 	h.do(func() {
-		if n := len(h.DTCsTab.grid.Objects); n != 6 {
-			t.Fatalf("grid has %d objects, want 6", n)
+		// set DTCs come first, then stored, each sorted by name
+		var got [][]string
+		for _, o := range h.DTCsTab.list.Objects {
+			var row []string
+			for _, cell := range o.(*columnsRow).cells.Objects {
+				row = append(row, cell.(*wrappedText).text)
+			}
+			got = append(got, row)
+		}
+		want := [][]string{
+			{"P0102", "MAF SENSOR LOW INPUT", labelSet},
+			{"P0103", "MAF SENSOR HIGH INPUT", labelStored},
+			{"P0335", "CRANKSHAFT POS. SENSOR A MALFUNCTION", labelStored},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("DTC rows = %q, want %q", got, want)
 		}
 		if h.DTCsTab.status.Visible() {
 			t.Errorf("unexpected status %q", h.DTCsTab.status.Text())
@@ -169,4 +184,16 @@ func TestParameterChangesDuringDTCRefresh(t *testing.T) {
 	})
 	close(release)
 	h.waitFor("the logging session to start", func() bool { return h.LoggingTab.runner.Running() })
+}
+
+func TestSplitDTCName(t *testing.T) {
+	for name, want := range map[string][2]string{
+		"P0102 MAF SENSOR LOW INPUT": {"P0102", "MAF SENSOR LOW INPUT"},
+		"MAF SENSOR LOW INPUT":       {"", "MAF SENSOR LOW INPUT"},
+		"P0102":                      {"", "P0102"},
+	} {
+		if code, description := splitDTCName(name); code != want[0] || description != want[1] {
+			t.Errorf("splitDTCName(%q) = %q, %q, want %q, %q", name, code, description, want[0], want[1])
+		}
+	}
 }

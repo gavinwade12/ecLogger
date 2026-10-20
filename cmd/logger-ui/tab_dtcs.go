@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
@@ -20,7 +22,7 @@ const (
 type DTCsTab struct {
 	app *App
 
-	grid       *fyne.Container
+	list       *fyne.Container
 	refreshBtn *widget.Button
 	status     *hint
 }
@@ -28,21 +30,22 @@ type DTCsTab struct {
 func NewDTCsTab(app *App) *DTCsTab {
 	tab := &DTCsTab{
 		app:    app,
-		grid:   container.NewGridWithColumns(2),
+		list:   container.New(newListLayout(theme.Padding())),
 		status: newHint(""),
 	}
-	tab.refreshBtn = widget.NewButton("Refresh", tab.refresh)
+	tab.refreshBtn = widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), tab.refresh)
 	tab.status.Wrapping = fyne.TextWrapWord
+	tab.status.segment.Style.Alignment = fyne.TextAlignLeading
 	tab.status.Hide()
 	return tab
 }
 
 func (t *DTCsTab) Container() fyne.CanvasObject {
-	return container.NewVScroll(container.NewVBox(
-		t.refreshBtn,
-		t.status,
-		t.grid,
-	))
+	// the button keeps its height when a long status wraps
+	header := container.NewPadded(container.NewBorder(nil, nil,
+		container.NewVBox(t.refreshBtn), nil, t.status))
+	return container.NewBorder(header, nil, nil, nil,
+		container.NewVScroll(container.NewPadded(t.list)))
 }
 
 func (t *DTCsTab) setStatus(s string) {
@@ -64,7 +67,7 @@ func (t *DTCsTab) refresh() {
 	}
 
 	t.refreshBtn.Disable()
-	t.grid.RemoveAll()
+	t.list.RemoveAll()
 	t.setStatus("Reading DTCs...")
 	t.app.LoggingTab.PauseLogging()
 
@@ -106,19 +109,57 @@ func (t *DTCsTab) showDTCs(setDTCs, storedDTCs []ssm2.DTC, err error) {
 
 	sort.Sort(sortableDTCs(setDTCs))
 	sort.Sort(sortableDTCs(storedDTCs))
+	widths := dtcColumnWidths()
 	for _, dtc := range setDTCs {
-		t.grid.Objects = append(t.grid.Objects,
-			NewWrappedLabel(dtc.Name),
-			widget.NewLabel(labelSet),
-		)
+		t.list.Objects = append(t.list.Objects, newDTCRow(widths, dtc, labelSet, theme.ColorNameWarning))
 	}
 	for _, dtc := range storedDTCs {
-		t.grid.Objects = append(t.grid.Objects,
-			NewWrappedLabel(dtc.Name),
-			widget.NewLabel(labelStored),
-		)
+		t.list.Objects = append(t.list.Objects, newDTCRow(widths, dtc, labelStored, colorNameSecondaryText))
 	}
-	t.grid.Refresh()
+	t.list.Refresh()
+}
+
+// The DTC row columns: its code, its description, and whether it's set or
+// stored.
+const dtcDescriptionColumn = 1
+
+// dtcColumnWidths returns the widths of the code and set or stored
+// columns, so any code or label fits.
+func dtcColumnWidths() []float32 {
+	textSize := theme.TextSize()
+	code := fyne.MeasureText("P0000", textSize, fyne.TextStyle{Bold: true}).Width
+	label := max(fyne.MeasureText(labelSet, textSize, fyne.TextStyle{Bold: true}).Width,
+		fyne.MeasureText(labelStored, textSize, fyne.TextStyle{Bold: true}).Width)
+	return []float32{code, label}
+}
+
+// newDTCRow returns a row showing dtc's code and description, and label
+// in labelColor.
+func newDTCRow(widths []float32, dtc ssm2.DTC, label string, labelColor fyne.ThemeColorName) *columnsRow {
+	code, description := splitDTCName(dtc.Name)
+	codeText := newWrappedText(code, theme.SizeNameText, theme.ColorNameForeground)
+	codeText.style.Bold = true
+	labelText := newWrappedText(label, theme.SizeNameText, labelColor)
+	labelText.style.Bold = true
+	labelText.alignment = fyne.TextAlignTrailing
+
+	row := newColumnsRow(widths, dtcDescriptionColumn, colorNameTile,
+		codeText,
+		newWrappedText(description, theme.SizeNameText, theme.ColorNameForeground),
+		labelText,
+	)
+	row.verticalInset = theme.SizeNameInnerPadding
+	return row
+}
+
+// splitDTCName splits a DTC's name, like "P0102 MAF SENSOR LOW INPUT",
+// into its code and description.
+func splitDTCName(name string) (code, description string) {
+	code, description, ok := strings.Cut(name, " ")
+	if !ok || len(code) != 5 {
+		return "", name
+	}
+	return code, description
 }
 
 type sortableDTCs []ssm2.DTC

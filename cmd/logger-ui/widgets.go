@@ -6,12 +6,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func NewWrappedLabel(text string) *widget.Label {
-	label := widget.NewLabel(text)
-	label.Wrapping = fyne.TextWrapWord
-	return label
-}
-
 // hint is secondary text that explains a page, like why it's empty, or
 // what went wrong.
 type hint struct {

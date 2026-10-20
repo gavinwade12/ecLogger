@@ -119,6 +119,8 @@ type columnsRow struct {
 	backgroundColor fyne.ThemeColorName
 	layout          *columnsLayout
 	cells           *fyne.Container
+	// verticalInset is the space above and below the cells.
+	verticalInset fyne.ThemeSizeName
 }
 
 // newColumnsRow returns a row of cells in columns as wide as widths, but
@@ -129,6 +131,7 @@ func newColumnsRow(widths []float32, flex int, backgroundColor fyne.ThemeColorNa
 		background:      canvas.NewRectangle(nil),
 		backgroundColor: backgroundColor,
 		layout:          &columnsLayout{widths: widths, flex: flex},
+		verticalInset:   theme.SizeNamePadding,
 	}
 	r.cells = container.New(r.layout, cells...)
 	r.ExtendBaseWidget(r)
@@ -137,7 +140,8 @@ func newColumnsRow(widths []float32, flex int, backgroundColor fyne.ThemeColorNa
 
 // inset is the space between the row's edges and its cells.
 func (r *columnsRow) inset() fyne.Size {
-	return fyne.NewSize(theme.InnerPadding(), theme.Padding())
+	th := r.Theme()
+	return fyne.NewSize(th.Size(theme.SizeNameInnerPadding), th.Size(r.verticalInset))
 }
 
 func (r *columnsRow) heightForWidth(width float32) float32 {
