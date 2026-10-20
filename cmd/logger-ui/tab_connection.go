@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gavinwade12/ecLogger/internal/serialport"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
@@ -44,12 +46,13 @@ func NewConnectionTab(app *App) *ConnectionTab {
 	}
 	connectionTab.startSerialPortQuery()
 
+	connectionTab.connectionState.Set("Disconnected")
 	form := widget.NewForm(
 		widget.NewFormItem("Port", connectionTab.serialPortSelect),
+		widget.NewFormItem("Status", newConnectionStatus(connectionTab.connectionState)),
 	)
 
-	connectionTab.connectionState.Set("Disconnected")
-
+	connectionTab.connectBtn.Importance = widget.HighImportance
 	connectionTab.connectBtn.OnTapped = connectionTab.OnConnectTapped
 	connectionTab.disconnectBtn.OnTapped = app.OnDisconnect
 	connectionTab.disconnectBtn.Hide()
@@ -57,9 +60,6 @@ func NewConnectionTab(app *App) *ConnectionTab {
 
 	connectionTab.container = container.New(layout.NewVBoxLayout(),
 		form,
-		container.New(layout.NewHBoxLayout(),
-			widget.NewLabel("Status: "),
-			widget.NewLabelWithData(connectionTab.connectionState)),
 		connectionTab.connectBtn,
 		connectionTab.cancelBtn,
 		connectionTab.disconnectBtn)
@@ -69,6 +69,45 @@ func NewConnectionTab(app *App) *ConnectionTab {
 
 func (t *ConnectionTab) Container() fyne.CanvasObject {
 	return container.NewPadded(newMaxWidth(t.container))
+}
+
+// newConnectionStatus shows state beside a dot colored by it, and in the
+// error color when connecting failed.
+func newConnectionStatus(state binding.String) fyne.CanvasObject {
+	dot := canvas.NewCircle(nil)
+	label := widget.NewLabelWithData(state)
+	label.Wrapping = fyne.TextWrapWord
+	state.AddListener(binding.NewDataListener(func() {
+		s, _ := state.Get()
+		color := connectionStatusColor(s)
+		dot.FillColor = theme.Color(color)
+		dot.Refresh()
+
+		label.Importance = widget.MediumImportance
+		if color == theme.ColorNameError {
+			label.Importance = widget.DangerImportance
+		}
+		label.Refresh()
+	}))
+
+	dotSize := fyne.NewSquareSize(theme.Size(theme.SizeNameInlineIcon) / 2)
+	return container.NewBorder(nil, nil,
+		container.NewCenter(container.NewGridWrap(dotSize, dot)), nil,
+		label)
+}
+
+// connectionStatusColor returns the color of a connection state.
+func connectionStatusColor(state string) fyne.ThemeColorName {
+	switch state {
+	case "Connected":
+		return theme.ColorNameSuccess
+	case "Connecting", "Initializing":
+		return theme.ColorNameWarning
+	case "Disconnected":
+		return colorNameSecondaryText
+	}
+	// a disconnected state with why connecting failed
+	return theme.ColorNameError
 }
 
 func (t *ConnectionTab) OnConnectTapped() {

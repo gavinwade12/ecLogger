@@ -7,7 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
@@ -86,4 +90,39 @@ func TestConnectShowsErrors(t *testing.T) {
 	// and canceling isn't shown as an error
 	h.do(func() { test.Tap(h.ConnectionTab.cancelBtn) })
 	h.waitForState("Disconnected")
+}
+
+func TestConnectionStatusColor(t *testing.T) {
+	for state, want := range map[string]fyne.ThemeColorName{
+		"Connected":                        theme.ColorNameSuccess,
+		"Connecting":                       theme.ColorNameWarning,
+		"Initializing":                     theme.ColorNameWarning,
+		"Disconnected":                     colorNameSecondaryText,
+		"Disconnected: a port is required": theme.ColorNameError,
+	} {
+		if got := connectionStatusColor(state); got != want {
+			t.Errorf("connectionStatusColor(%q) = %q, want %q", state, got, want)
+		}
+	}
+}
+
+func TestConnectionStatusShowsFailuresAsErrors(t *testing.T) {
+	h := newTestApp(t)
+	state := binding.NewString()
+	var status fyne.CanvasObject
+	h.do(func() { status = newConnectionStatus(state) })
+	label := status.(*fyne.Container).Objects[0].(*widget.Label)
+
+	for s, want := range map[string]widget.Importance{
+		"Connected":                        widget.MediumImportance,
+		"Disconnected: a port is required": widget.DangerImportance,
+	} {
+		state.Set(s)
+		fyne.DoAndWait(func() {})
+		h.do(func() {
+			if label.Text != s || label.Importance != want {
+				t.Errorf("label = %q with importance %v, want %q with %v", label.Text, label.Importance, s, want)
+			}
+		})
+	}
 }
