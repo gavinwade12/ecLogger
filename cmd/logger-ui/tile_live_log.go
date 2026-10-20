@@ -140,13 +140,20 @@ func (r *liveLogTileRenderer) Layout(size fyne.Size) {
 	r.max.Move(fyne.NewPos(maxX, detailY))
 	r.maxLabel.Move(fyne.NewPos(maxX-m.gap-r.maxLabel.MinSize().Width, detailY))
 
+	// the value and unit are right-aligned, so neither moves as the value
+	// gains or loses digits
 	valueY := detailY - m.gap - m.valueHeight
-	r.value.Move(fyne.NewPos(m.padding, valueY))
+	unitX := size.Width - m.padding - r.unit.MinSize().Width
+	valueX := unitX - r.value.MinSize().Width
+	if r.unit.Text != "" {
+		valueX -= m.gap
+	}
+	r.value.Move(fyne.NewPos(valueX, valueY))
 	// line the unit's baseline up with the value's
 	driver := fyne.CurrentApp().Driver()
 	_, valueBaseline := driver.RenderedTextSize(r.value.Text, m.valueSize, valueStyle, nil)
 	_, unitBaseline := driver.RenderedTextSize(r.unit.Text, m.textSize, fyne.TextStyle{}, nil)
-	r.unit.Move(fyne.NewPos(m.padding+r.value.MinSize().Width+m.gap, valueY+valueBaseline-unitBaseline))
+	r.unit.Move(fyne.NewPos(unitX, valueY+valueBaseline-unitBaseline))
 
 	for _, o := range r.texts() {
 		o.Resize(o.MinSize())

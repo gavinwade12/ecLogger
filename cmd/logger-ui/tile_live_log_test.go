@@ -79,3 +79,34 @@ func TestLiveLogTileShowsTheModel(t *testing.T) {
 	m.Update(ssm2.ParameterValue{Value: 2500, Unit: units.RPM}, logging.Stats{Min: 800, Max: 2500, Count: 2})
 	check("2500.00", string(units.RPM), "800.00", "2500.00")
 }
+
+func TestLiveLogTileValueDoesNotMoveTheUnit(t *testing.T) {
+	h := newTestApp(t)
+	m := newLiveLogModel("P8", "Boost")
+	var r *liveLogTileRenderer
+	h.do(func() {
+		tile := newLiveLogTile(m)
+		tile.Resize(fyne.NewSize(200, tile.MinSize().Height))
+		r = test.TempWidgetRenderer(t, tile).(*liveLogTileRenderer)
+	})
+
+	// the unit's position and the value's right edge, after showing v
+	positions := func(v float32) (unit fyne.Position, valueRight float32) {
+		t.Helper()
+		m.Update(ssm2.ParameterValue{Value: v, Unit: units.PSI}, logging.Stats{Min: v, Max: v, Count: 1})
+		fyne.DoAndWait(func() {})
+		h.do(func() {
+			unit = r.unit.Position()
+			valueRight = r.value.Position().X + r.value.Size().Width
+		})
+		return unit, valueRight
+	}
+
+	unit, valueRight := positions(-20)
+	for _, v := range []float32{-5, 0, 9.5, 20, 150} {
+		if u, right := positions(v); u != unit || right != valueRight {
+			t.Errorf("showing %v moved the unit to %v and the value's right edge to %v, want %v and %v",
+				v, u, right, unit, valueRight)
+		}
+	}
+}
