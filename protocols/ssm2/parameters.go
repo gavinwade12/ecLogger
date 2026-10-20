@@ -2,6 +2,7 @@ package ssm2
 
 import (
 	"encoding/binary"
+	"sort"
 
 	"github.com/gavinwade12/ecLogger/units"
 )
@@ -88,24 +89,42 @@ func (v ParameterValue) SafeConvertTo(u units.Unit) ParameterValue {
 }
 
 // AvailableDerivedParameters returns the DerivedParameters
-// that are available based on the provided Parameters.
+// that are available based on the provided Parameters. A DerivedParameter
+// may depend on other DerivedParameters; the result is ordered so that
+// dependencies come before the parameters that depend on them.
 func AvailableDerivedParameters(params []Parameter) []DerivedParameter {
-	lookup := make(map[string]Parameter)
+	available := make(map[string]bool)
 	for _, p := range params {
-		lookup[p.Id] = p
+		available[p.Id] = true
 	}
 
+	ids := make([]string, 0, len(DerivedParameters))
+	for id := range DerivedParameters {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
 	derived := make([]DerivedParameter, 0)
-	for _, p := range DerivedParameters {
-		available := true
-		for _, d := range p.DependsOnParameters {
-			if _, ok := lookup[d]; !ok {
-				available = false
-				break
+	for added := true; added; {
+		added = false
+		for _, id := range ids {
+			if available[id] {
+				continue
 			}
-		}
-		if available {
-			derived = append(derived, p)
+
+			p := DerivedParameters[id]
+			met := true
+			for _, d := range p.DependsOnParameters {
+				if !available[d] {
+					met = false
+					break
+				}
+			}
+			if met {
+				available[id] = true
+				derived = append(derived, p)
+				added = true
+			}
 		}
 	}
 
@@ -3669,7 +3688,8 @@ var DerivedParameters = map[string]DerivedParameter{
 		DefaultUnit:         units.PSI,
 		DependsOnParameters: []string{"P7", "P24"},
 		Value: func(params map[string]ParameterValue) (*ParameterValue, error) {
-			return &ParameterValue{(params["P7"].SafeConvertTo(units.KPA).Value) - (params["P24"].SafeConvertTo(units.KPA).Value), units.PSI}, nil
+			kpa := ParameterValue{(params["P7"].SafeConvertTo(units.KPA).Value) - (params["P24"].SafeConvertTo(units.KPA).Value), units.KPA}
+			return kpa.ConvertTo(units.PSI)
 		},
 	},
 	"P203": {

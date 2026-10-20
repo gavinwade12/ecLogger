@@ -59,6 +59,10 @@ var (
 	// ErrInvalidChecksumByte is returned when a packet is received from
 	// the ECU and the checksum byte doesn't match the calculated checksum byte.
 	ErrInvalidChecksumByte = errors.New("invalid checksum byte")
+
+	// ErrInvalidResponseLength is returned when a response packet's data
+	// doesn't have the length expected for the request.
+	ErrInvalidResponseLength = errors.New("invalid response length")
 )
 
 // Data returns the section of the packet corresponding to the payload data.
@@ -137,9 +141,17 @@ type ECU struct {
 	SupportedDerivedParameters []DerivedParameter
 }
 
-func parseECUFromInitResponse(p Packet) *ECU {
+// initResponseIDsLength is the number of bytes at the start of an init response
+// holding the SSM ID (3 bytes) and ROM ID (5 bytes).
+const initResponseIDsLength = 8
+
+func parseECUFromInitResponse(p Packet) (*ECU, error) {
 	data := p.Data()
 	dLen := uint(len(data))
+	if dLen < initResponseIDsLength {
+		return nil, fmt.Errorf("%w: init response has %d data bytes, want at least %d",
+			ErrInvalidResponseLength, dLen, initResponseIDsLength)
+	}
 
 	ecu := &ECU{
 		SSM_ID:                     data[:3],
@@ -160,5 +172,5 @@ func parseECUFromInitResponse(p Packet) *ECU {
 
 	ecu.SupportedDerivedParameters = AvailableDerivedParameters(ecu.SupportedParameters)
 
-	return ecu
+	return ecu, nil
 }

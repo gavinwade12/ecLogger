@@ -50,6 +50,9 @@ func (c *fakeConnection) InitECU(ctx context.Context) (*ECU, error) {
 func (c *fakeConnection) SendReadAddressesRequest(ctx context.Context, addresses [][3]byte, continous bool) (Packet, error) {
 	c.continuousAddressRead = continous
 	c.addresses = len(addresses)
+	if c.ticker != nil {
+		c.ticker.Stop()
+	}
 	c.ticker = time.NewTicker(c.latency)
 
 	return c.addressResponsePacket(), nil
@@ -58,20 +61,28 @@ func (c *fakeConnection) SendReadAddressesRequest(ctx context.Context, addresses
 // NextPacket waits for the connection's latency and then returns
 // a packet.
 func (c *fakeConnection) NextPacket(ctx context.Context) (Packet, error) {
-	<-c.ticker.C
+	if c.ticker == nil {
+		c.ticker = time.NewTicker(c.latency)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.ticker.C:
+	}
+
 	if c.continuousAddressRead {
 		return c.addressResponsePacket(), nil
 	}
-	return Packet{}, nil
+	return newPacket(DeviceEngine, DeviceDiagnosticTool, CommandReadAddressesResponse, nil), nil
 }
 
-// Close does nothing.
+// Close stops the connection's ticker.
 func (c *fakeConnection) Close() error {
+	if c.ticker != nil {
+		c.ticker.Stop()
+	}
 	return nil
-}
-
-func (c *fakeConnection) logger() Logger {
-	return NopLogger
 }
 
 func (c *fakeConnection) addressResponsePacket() Packet {

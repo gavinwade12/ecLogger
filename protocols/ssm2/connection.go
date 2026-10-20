@@ -17,8 +17,14 @@ type Connection interface {
 	SendReadAddressesRequest(ctx context.Context, addresses [][3]byte, continous bool) (Packet, error)
 	NextPacket(ctx context.Context) (Packet, error)
 	Close() error
+}
 
-	logger() Logger
+// loggerFor returns the logger used by conn, or NopLogger if it doesn't expose one.
+func loggerFor(conn Connection) Logger {
+	if c, ok := conn.(interface{ logger() Logger }); ok {
+		return c.logger()
+	}
+	return NopLogger
 }
 
 type connection struct {
@@ -65,7 +71,7 @@ func (c *connection) InitECU(ctx context.Context) (*ECU, error) {
 		return nil, ErrInvalidResponseCommand
 	}
 
-	return parseECUFromInitResponse(rp), nil
+	return parseECUFromInitResponse(rp)
 }
 
 // ReadAddressses sends a read addresses request to the ECU. The results should be fetched via NextPacket().
@@ -203,6 +209,7 @@ func (c *connection) readInFull(ctx context.Context, b []byte) error {
 		for readCount < len(b) {
 			if err := c.waitForNBytesToTransfer(ctx, len(b)-readCount); err != nil {
 				result <- readResult{readCount, err}
+				return
 			}
 
 			c.log.Debug("starting read")

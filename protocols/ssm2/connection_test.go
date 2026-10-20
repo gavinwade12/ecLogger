@@ -44,6 +44,18 @@ func calculateChecksum(b []byte) byte {
 	return byte(sum)
 }
 
+// minimalInitResponse returns an init response containing only
+// the SSM ID and ROM ID, with no capability bytes.
+func minimalInitResponse() []byte {
+	ids := make([]byte, 8)
+	resp := []byte{
+		ssm2.PacketMagicByte, ssm2.DeviceDiagnosticTool, ssm2.DeviceEngine,
+		byte(len(ids) + 1), ssm2.CommandInitResponse,
+	}
+	resp = append(resp, ids...)
+	return append(resp, calculateChecksum(resp))
+}
+
 var initRequestPacket = []byte{
 	ssm2.PacketMagicByte, ssm2.DeviceEngine, ssm2.DeviceDiagnosticTool,
 	0x01, ssm2.CommandInitRequest, 0x40,
@@ -143,12 +155,7 @@ func TestSendingPacket(t *testing.T) {
 	t.Run("IgnoresAnEchoedRequest", func(t *testing.T) {
 		port := newTestSerialPort()
 
-		resp := []byte{
-			ssm2.PacketMagicByte, ssm2.DeviceDiagnosticTool, ssm2.DeviceEngine,
-			0x01, ssm2.CommandInitResponse,
-		}
-		resp = append(resp, calculateChecksum(resp))
-		resp = append(initRequestPacket, resp...)
+		resp := append(initRequestPacket, minimalInitResponse()...)
 		port.out = bytes.NewBuffer(resp)
 
 		conn := ssm2.NewConnection(port, nil)
@@ -169,13 +176,7 @@ func TestSendingPacket(t *testing.T) {
 func TestInitECU(t *testing.T) {
 	t.Run("ValidRequest", func(t *testing.T) {
 		port := newTestSerialPort()
-
-		resp := []byte{
-			ssm2.PacketMagicByte, ssm2.DeviceDiagnosticTool, ssm2.DeviceEngine,
-			0x01, ssm2.CommandInitResponse,
-		}
-		resp = append(resp, calculateChecksum(resp))
-		port.out = bytes.NewBuffer(resp)
+		port.out = bytes.NewBuffer(minimalInitResponse())
 
 		conn := ssm2.NewConnection(port, nil)
 
@@ -205,6 +206,21 @@ func TestInitECU(t *testing.T) {
 		_, err := conn.InitECU(context.Background())
 		if !errors.Is(err, ssm2.ErrInvalidResponseCommand) {
 			t.Fatalf("want ErrInvalidResponseCommand (%v). got: %v.", ssm2.ErrInvalidResponseCommand, err)
+		}
+	})
+
+	t.Run("RejectsShortResponse", func(t *testing.T) {
+		port := newTestSerialPort()
+		resp := []byte{
+			ssm2.PacketMagicByte, ssm2.DeviceDiagnosticTool, ssm2.DeviceEngine,
+			0x01, ssm2.CommandInitResponse,
+		}
+		port.out = bytes.NewBuffer(append(resp, calculateChecksum(resp)))
+		conn := ssm2.NewConnection(port, nil)
+
+		_, err := conn.InitECU(context.Background())
+		if !errors.Is(err, ssm2.ErrInvalidResponseLength) {
+			t.Fatalf("want ErrInvalidResponseLength. got: %v.", err)
 		}
 	})
 
@@ -374,6 +390,83 @@ func TestSendReadAddressesRequest(t *testing.T) {
 		}
 		if data[1] != values[1] {
 			t.Fatalf("invalid second byte. want: %x. got: %x.", values[1], data[1])
+		}
+	})
+}
+
+// shortWritePort reports writing fewer bytes than it was given.
+type shortWritePort struct{ testSerialPort }
+
+func (p *shortWritePort) Write(b []byte) (int, error) { return len(b) - 1, nil }
+
+// errPort fails every read.
+type errPort struct{ testSerialPort }
+
+func (p *errPort) Read(b []byte) (int, error) { return 0, errors.New("boom") }
+
+func TestConnectionErrors(t *testing.T) {
+	t.Run("ShortWrite", func(t *testing.T) {
+		port := &shortWritePort{*newTestSerialPort()}
+		conn := ssm2.NewConnection(port, nil)
+
+		_, err := conn.InitECU(context.Background())
+		if err == nil {
+			t.Fatal("expected an error for a short write")
+		}
+	})
+
+	t.Run("ReadError", func(t *testing.T) {
+		port := &errPort{*newTestSerialPort()}
+		conn := ssm2.NewConnection(port, nil)
+
+		_, err := conn.NextPacket(context.Background())
+		if err == nil {
+			t.Fatal("expected the read error to be returned")
+		}
+	})
+
+	t.Run("CanceledContext", func(t *testing.T) {
+		port := newTestSerialPort()
+		port.out = bytes.NewBuffer(minimalInitResponse())
+		conn := ssm2.NewConnection(port, nil)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := conn.NextPacket(ctx)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("want context.Canceled. got: %v.", err)
+		}
+	})
+}
+
+func TestNextPacketResync(t *testing.T) {
+	t.Run("SkipsLeadingGarbage", func(t *testing.T) {
+		port := newTestSerialPort()
+		// two stray bytes from a previous packet precede a valid packet
+		port.out = bytes.NewBuffer(append([]byte{0x01, 0x02}, minimalInitResponse()...))
+		conn := ssm2.NewConnection(port, nil)
+
+		p, err := conn.NextPacket(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(p, minimalInitResponse()) {
+			t.Fatalf("unexpected packet. want: %x. got: %x.", minimalInitResponse(), p)
+		}
+	})
+
+	t.Run("SkipsAWholeHeaderOfGarbage", func(t *testing.T) {
+		port := newTestSerialPort()
+		garbage := make([]byte, ssm2.PacketHeaderSize)
+		port.out = bytes.NewBuffer(append(garbage, minimalInitResponse()...))
+		conn := ssm2.NewConnection(port, nil)
+
+		p, err := conn.NextPacket(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(p, minimalInitResponse()) {
+			t.Fatalf("unexpected packet. want: %x. got: %x.", minimalInitResponse(), p)
 		}
 	})
 }

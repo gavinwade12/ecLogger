@@ -1,6 +1,7 @@
 package ssm2_test
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -177,5 +178,45 @@ func TestAvailableDerivedParameters(t *testing.T) {
 
 	if !valid {
 		t.Errorf("AvailableDerivedParameters() = %v, want %v", got, want)
+	}
+}
+
+func TestAvailableDerivedParameters_DerivedDependencies(t *testing.T) {
+	params := []ssm2.Parameter{
+		ssm2.Parameters["P7"],
+		ssm2.Parameters["P8"],
+		ssm2.Parameters["P11"],
+		ssm2.Parameters["P12"],
+	}
+
+	got := ssm2.AvailableDerivedParameters(params)
+
+	index := map[string]int{}
+	for i, p := range got {
+		index[p.Id] = i
+	}
+	for _, id := range []string{"P200", "P242", "P243"} {
+		if _, ok := index[id]; !ok {
+			t.Fatalf("expected %s to be available. got: %v.", id, index)
+		}
+	}
+	if index["P200"] > index["P242"] || index["P200"] > index["P243"] {
+		t.Errorf("P200 must come before the parameters that depend on it. got: %v.", index)
+	}
+}
+
+func TestDerivedParameter_P202(t *testing.T) {
+	v, err := ssm2.DerivedParameters["P202"].Value(map[string]ssm2.ParameterValue{
+		"P7":  {Value: 200, Unit: units.KPA}, // manifold absolute pressure
+		"P24": {Value: 100, Unit: units.KPA}, // atmospheric pressure
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Unit != units.PSI {
+		t.Fatalf("unit = %s, want psi", v.Unit)
+	}
+	if math.Abs(float64(v.Value)-14.5) > 0.05 {
+		t.Fatalf("value = %f psi, want ~14.5 (100 kPa)", v.Value)
 	}
 }
