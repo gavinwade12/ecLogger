@@ -3,3 +3,5 @@ cmd/ssm2-cli/ssm2-cli.exe
 cmd/logger-ui/logger-ui
 cmd/logger-ui/logger-ui.exe
 cmd/logger-ui/*.log
+
+.scratch

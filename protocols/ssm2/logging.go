@@ -6,14 +6,14 @@ import (
 )
 
 // maxConsecutiveLoggingErrors is the number of consecutive packet errors
-// tolerated before a logging session gives up.
+// tolerated before a logging read gives up.
 const maxConsecutiveLoggingErrors = 3
 
-// LoggingSession sends a continuous ReadAddressesRequest for the given parameters
+// ContinuousReads sends a continuous ReadAddressesRequest for the given parameters
 // and then reads the response packets until the context is canceled. The results
 // are sent on the returned channel, and the channel is closed when the context
 // is canceled or too many consecutive errors are encountered during processing.
-func LoggingSession(ctx context.Context, conn Connection, params []Parameter,
+func ContinuousReads(ctx context.Context, conn Connection, params []Parameter,
 	derived []DerivedParameter) (<-chan map[string]ParameterValue, error) {
 	_, err := conn.SendReadAddressesRequest(ctx, addressesToRead(params), true)
 	if err != nil {
@@ -67,7 +67,7 @@ func processPackets(ctx context.Context, results chan<- map[string]ParameterValu
 
 // DecodeValues decodes the data from a read addresses response into parameter
 // values. data must contain the bytes for params in order, as requested by
-// LoggingSession. Derived parameters are then calculated from the decoded values,
+// ContinuousReads. Derived parameters are then calculated from the decoded values,
 // in dependency order. Derived parameters whose dependencies are missing are skipped.
 func DecodeValues(data []byte, params []Parameter, derived []DerivedParameter,
 	log Logger) (map[string]ParameterValue, error) {

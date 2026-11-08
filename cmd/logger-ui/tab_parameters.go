@@ -62,7 +62,7 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 
 	t.container.RemoveAll()
 
-	loggedParams := t.app.loggedParams.CopyData()
+	loggedParams := t.app.loggedParams.Snapshot()
 	for _, param := range params {
 		param := param
 
@@ -75,55 +75,27 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 		}
 
 		unit := widget.NewSelect(options, func(s string) {
-			lp := t.app.loggedParams.Get(param.Id)
-			if lp != nil {
-				lp.Unit = units.Unit(s)
-			}
+			t.app.loggedParams.SetUnit(param.Id, units.Unit(s))
 		})
-		lp := loggedParams[param.Id]
-		if lp != nil {
+		lp, logged := loggedParams[param.Id]
+		if logged {
 			unit.Selected = string(lp.Unit)
 		} else {
 			unit.Selected = options[0]
 		}
 
 		fileLogCheck := widget.NewCheck("Log To File", func(b bool) {
-			if b {
-				t.app.loggedParams.UpdateOrAdd(param.Id, func(lp *LoggedParam) {
-					lp.LogToFile = true
-				}, &LoggedParam{Derived: param.Derived, LogToFile: true, Unit: units.Unit(unit.Selected)})
-			} else {
-				lp := t.app.loggedParams.Get(param.Id)
-				if lp != nil && lp.LiveLog {
-					t.app.loggedParams.Update(param.Id, func(lp *LoggedParam) {
-						lp.LogToFile = false
-					})
-				} else {
-					t.app.loggedParams.Remove(param.Id)
-				}
-			}
-			t.app.LoggingTab.onLoggedParametersChanged()
-		})
-		liveLogCheck := widget.NewCheck("Live Log", func(b bool) {
-			if b {
-				t.app.loggedParams.UpdateOrAdd(param.Id, func(lp *LoggedParam) {
-					lp.LiveLog = true
-				}, &LoggedParam{Derived: param.Derived, LiveLog: true, Unit: units.Unit(unit.Selected)})
-			} else {
-				lp := t.app.loggedParams.Get(param.Id)
-				if lp != nil && lp.LogToFile {
-					t.app.loggedParams.Update(param.Id, func(lp *LoggedParam) {
-						lp.LiveLog = false
-					})
-				} else {
-					t.app.loggedParams.Remove(param.Id)
-				}
-			}
+			t.app.loggedParams.SetLogToFile(param.Id, param.Derived, units.Unit(unit.Selected), b)
 			t.app.LoggingTab.onLoggedParametersChanged()
 			t.app.LoggingTab.updateLiveLogParameters()
 		})
-		fileLogCheck.Checked = loggedParams[param.Id] != nil && loggedParams[param.Id].LogToFile
-		liveLogCheck.Checked = loggedParams[param.Id] != nil && loggedParams[param.Id].LiveLog
+		liveLogCheck := widget.NewCheck("Live Log", func(b bool) {
+			t.app.loggedParams.SetLiveLog(param.Id, param.Derived, units.Unit(unit.Selected), b)
+			t.app.LoggingTab.onLoggedParametersChanged()
+			t.app.LoggingTab.updateLiveLogParameters()
+		})
+		fileLogCheck.Checked = lp.LogToFile
+		liveLogCheck.Checked = lp.LiveLog
 
 		t.container.Objects = append(t.container.Objects,
 			NewWrappedLabel(param.Name),

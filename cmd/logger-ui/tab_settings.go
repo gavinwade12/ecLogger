@@ -15,9 +15,9 @@ var settingsFormItems = []func(app *App) []*widget.FormItem{
 	func(app *App) []*widget.FormItem {
 		return []*widget.FormItem{
 			widget.NewFormItem("Log Directory", widget.NewEntryWithData(
-				binding.BindString(app.config.LogDirectory))),
+				binding.BindString(&app.config.LogDirectory))),
 			widget.NewFormItem("Log File Name Format", widget.NewEntryWithData(
-				binding.BindString(app.config.LogFileNameFormat))),
+				binding.BindString(&app.config.LogFileNameFormat))),
 			widget.NewFormItem("Auto Connect", widget.NewCheckWithData("",
 				binding.BindBool(&app.config.AutoConnect))),
 			widget.NewFormItem("Default to Logging Tab", widget.NewCheckWithData(

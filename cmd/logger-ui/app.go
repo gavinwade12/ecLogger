@@ -4,6 +4,8 @@ import (
 	"fyne.io/fyne/v2"
 	fyneApp "fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"github.com/gavinwade12/ecLogger/internal/config"
+	"github.com/gavinwade12/ecLogger/internal/logging"
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
@@ -17,19 +19,9 @@ const (
 	TabSettings   TabType = 4
 )
 
-type Config struct {
-	SelectedPort        string
-	LogDirectory        *string
-	LogFileNameFormat   *string
-	LoggedParams        map[string]*LoggedParam
-	UseFakeConnection   bool
-	AutoConnect         bool
-	DefaultToLoggingTab bool
-}
-
 type App struct {
-	config       *Config
-	loggedParams *LoggedParams
+	config       *config.Config
+	loggedParams *logging.Params
 
 	fyneApp fyne.App
 
@@ -44,10 +36,10 @@ type App struct {
 	ecu        *ssm2.ECU
 }
 
-func NewApp(config *Config) *App {
+func NewApp(cfg *config.Config) *App {
 	app := &App{
-		config:       config,
-		loggedParams: NewLoggedParams(config.LoggedParams),
+		config:       cfg,
+		loggedParams: logging.NewParams(cfg.LoggedParams),
 		fyneApp:      fyneApp.New(),
 	}
 
@@ -79,10 +71,7 @@ func (a *App) OnNewConnection(conn ssm2.Connection, ecu *ssm2.ECU) {
 }
 
 func (a *App) OnDisconnect() {
-	if a.LoggingTab.cancelLogging != nil {
-		a.LoggingTab.cancelLogging()
-		a.LoggingTab.cancelLogging = nil
-	}
+	a.LoggingTab.DisableLogging()
 
 	a.connection.Close()
 	a.connection = nil

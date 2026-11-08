@@ -9,7 +9,7 @@ import (
 	"github.com/gavinwade12/ecLogger/protocols/ssm2"
 )
 
-func TestLoggingSession(t *testing.T) {
+func TestContinuousReads(t *testing.T) {
 	params := []ssm2.Parameter{
 		ssm2.Parameters["P7"],
 		ssm2.Parameters["P8"],
@@ -25,7 +25,7 @@ func TestLoggingSession(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	session, err := ssm2.LoggingSession(ctx, ssm2.NewFakeConnection(time.Millisecond), params, derivedParams)
+	session, err := ssm2.ContinuousReads(ctx, ssm2.NewFakeConnection(time.Millisecond), params, derivedParams)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,9 +111,9 @@ func (c *failingConnection) NextPacket(ctx context.Context) (ssm2.Packet, error)
 	return nil, errors.New("boom")
 }
 
-func TestLoggingSessionStopsAfterConsecutiveErrors(t *testing.T) {
+func TestContinuousReadsStopsAfterConsecutiveErrors(t *testing.T) {
 	conn := &failingConnection{memoryConnection: memoryConnection{ram: map[[3]byte]byte{}}}
-	session, err := ssm2.LoggingSession(context.Background(), conn,
+	session, err := ssm2.ContinuousReads(context.Background(), conn,
 		[]ssm2.Parameter{ssm2.Parameters["P8"]}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -132,9 +132,9 @@ func TestLoggingSessionStopsAfterConsecutiveErrors(t *testing.T) {
 	}
 }
 
-func TestLoggingSessionClosesOnCancel(t *testing.T) {
+func TestContinuousReadsClosesOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	session, err := ssm2.LoggingSession(ctx, ssm2.NewFakeConnection(time.Millisecond),
+	session, err := ssm2.ContinuousReads(ctx, ssm2.NewFakeConnection(time.Millisecond),
 		[]ssm2.Parameter{ssm2.Parameters["P8"]}, nil)
 	if err != nil {
 		t.Fatal(err)
