@@ -98,6 +98,11 @@ func (a *App) OnDisconnect() {
 	a.LoggingTab.updateLiveLogParameters()
 }
 
+// Content returns the app's UI, to be shown in a window.
+func (a *App) Content() fyne.CanvasObject {
+	return a.tabItems
+}
+
 func (a *App) Connection() ssm2.Connection {
 	return a.connection
 }

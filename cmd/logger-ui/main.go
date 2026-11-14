@@ -32,7 +32,7 @@ func main() {
 
 	window := app.fyneApp.NewWindow("Logger")
 	window.Resize(fyne.NewSize(800, 400))
-	window.SetContent(app.tabItems)
+	window.SetContent(app.Content())
 
 	if app.config.AutoConnect {
 		app.fyneApp.Lifecycle().SetOnStarted(app.ConnectionTab.OnConnectTapped)

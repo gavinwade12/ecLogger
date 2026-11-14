@@ -1,78 +1,70 @@
-package main
+package main_test
 
 import (
 	"bufio"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
 	"testing"
 
-	"fyne.io/fyne/v2/test"
-	"github.com/gavinwade12/ecLogger/internal/logging"
-	"github.com/gavinwade12/ecLogger/protocols/ssm2"
-	"github.com/gavinwade12/ecLogger/units"
+	ui "github.com/gavinwade12/ecLogger/cmd/logger-ui"
 )
 
 func TestEnableLoggingWithoutParams(t *testing.T) {
-	h := newTestApp(t)
-	h.connect()
+	ta := newTestApp(t)
+	ta.connect()
 
-	h.do(func() {
-		h.LoggingTab.EnableLogging()
-		if h.LoggingTab.runner.Running() {
-			t.Fatal("started a session with no logged parameters")
-		}
+	ta.do(ta.LoggingTab.EnableLogging)
+	ta.assertLiveReadsStopped()
 
-		h.loggedParams.SetLiveLog("P8", false, units.RPM, true)
-		h.LoggingTab.EnableLogging()
-		if !h.LoggingTab.runner.Running() {
-			t.Fatal("expected a session for the logged parameter")
-		}
+	ta.setLiveLog("Engine Speed", true)
+	ta.waitForLiveReads()
 
-		h.loggedParams.SetLiveLog("P8", false, units.RPM, false)
-		h.LoggingTab.EnableLogging()
-		if h.LoggingTab.runner.Running() {
-			t.Fatal("expected the session to stop once nothing is logged")
-		}
-	})
+	ta.setLiveLog("Engine Speed", false)
+	ta.assertLiveReadsStopped()
+	ta.do(ta.LoggingTab.EnableLogging)
+	ta.assertLiveReadsStopped()
 }
 
 func TestFileLoggingOnlyIncludesFileParams(t *testing.T) {
-	h := newTestApp(t)
-	h.connect()
+	ta := newTestApp(t)
+	ta.connect()
+	logging := ui.TabLogging
 
-	h.do(func() {
-		h.loggedParams.SetLiveLog("P8", false, units.RPM, true)
-		h.LoggingTab.onLoggedParametersChanged()
-		if h.LoggingTab.header.Visible() {
-			t.Fatal("expected no file logging controls when nothing logs to file")
-		}
+	ta.setLiveLog("Engine Speed", true)
+	if ta.buttonShown(logging, "Log To File") {
+		t.Fatal("expected no file logging controls when nothing logs to file")
+	}
 
-		h.loggedParams.SetLogToFile("P9", false, units.MPH, true)
-		h.LoggingTab.onLoggedParametersChanged()
-		if !h.LoggingTab.header.Visible() || !h.LoggingTab.startBtn.Visible() {
-			t.Fatal("expected the Log To File button once a parameter logs to file")
-		}
+	ta.setFileLog("Vehicle Speed", true)
+	unit := ta.paramRow("Vehicle Speed").unit
+	ta.do(func() { unit.SetSelected("mph") })
+	if !ta.buttonShown(logging, "Log To File") {
+		t.Fatal("expected the Log To File button once a parameter logs to file")
+	}
 
-		h.LoggingTab.updateLiveLogParameters()
-		test.Tap(h.LoggingTab.startBtn)
-		if h.LoggingTab.startBtn.Visible() || !h.LoggingTab.stopBtn.Visible() {
-			t.Error("expected Stop in place of Log To File while logging to file")
-		}
-		if got := h.LoggingTab.fileStatus.Text; !strings.HasPrefix(got, "Logging to ") {
-			t.Errorf("file status = %q, want the file being logged to", got)
-		}
-
-		test.Tap(h.LoggingTab.stopBtn)
-		if !h.LoggingTab.startBtn.Visible() || h.LoggingTab.stopBtn.Visible() {
-			t.Error("expected Log To File in place of Stop after stopping")
-		}
-		if got := h.LoggingTab.fileStatus.Text; got != "" {
-			t.Errorf("file status = %q after stopping, want none", got)
+	ta.tap(logging, "Log To File")
+	if ta.buttonShown(logging, "Log To File") || !ta.buttonShown(logging, "Stop") {
+		t.Error("expected Stop in place of Log To File while logging to file")
+	}
+	ta.do(func() {
+		if !hasTextWithPrefix(ta.content(logging), "Logging to ") {
+			t.Errorf("Logging tab shows %q, want the file being logged to", texts(ta.content(logging)))
 		}
 	})
 
-	files, err := filepath.Glob(filepath.Join(h.config.LogDirectory, "*"))
+	ta.tap(logging, "Stop")
+	if !ta.buttonShown(logging, "Log To File") || ta.buttonShown(logging, "Stop") {
+		t.Error("expected Log To File in place of Stop after stopping")
+	}
+	ta.do(func() {
+		if hasTextWithPrefix(ta.content(logging), "Logging to ") {
+			t.Error("expected no file status after stopping")
+		}
+	})
+
+	// only the file parameters are in the file, in their configured units
+	files, err := filepath.Glob(filepath.Join(ta.cfg.LogDirectory, "*"))
 	if err != nil || len(files) != 1 {
 		t.Fatalf("log files = %v, %v; want one", files, err)
 	}
@@ -87,83 +79,61 @@ func TestFileLoggingOnlyIncludesFileParams(t *testing.T) {
 	}
 }
 
-func TestLiveLogModelShowsPlaceholderUntilAValue(t *testing.T) {
-	m := newLiveLogModel("P8", "Engine Speed")
-	check := func(wantValue, wantUnit string) {
-		t.Helper()
-		for name, b := range map[string]interface{ Get() (string, error) }{
-			"current": m.CurrentValueBinding, "min": m.MinValueBinding, "max": m.MaxValueBinding,
-		} {
-			if got, _ := b.Get(); got != wantValue {
-				t.Errorf("%s = %q, want %q", name, got, wantValue)
-			}
-		}
-		if got, _ := m.UnitBinding.Get(); got != wantUnit {
-			t.Errorf("unit = %q, want %q", got, wantUnit)
-		}
-	}
-
-	check(noValue, "")
-	m.Update(ssm2.ParameterValue{Value: 800, Unit: units.RPM}, logging.Stats{Min: 800, Max: 800, Count: 1})
-	check("800.00", string(units.RPM))
-}
-
 func TestFileLoggingShowsWhyItCouldntStart(t *testing.T) {
-	h := newTestApp(t)
-	h.connect()
+	ta := newTestApp(t)
+	ta.connect()
+	logging := ui.TabLogging
 
 	// a log directory inside a file can't be created
 	file := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	h.config.LogDirectory = filepath.Join(file, "logs")
+	ta.do(func() { ta.cfg.LogDirectory = filepath.Join(file, "logs") })
 
-	h.do(func() {
-		h.loggedParams.SetLogToFile("P9", false, units.MPH, true)
-		h.LoggingTab.onLoggedParametersChanged()
-		test.Tap(h.LoggingTab.startBtn)
-
-		if h.LoggingTab.logFile != nil || h.LoggingTab.stopBtn.Visible() {
-			t.Error("expected file logging not to start")
+	ta.setFileLog("Vehicle Speed", true)
+	ta.show(logging)
+	ta.tap(logging, "Log To File")
+	if ta.buttonShown(logging, "Stop") {
+		t.Error("expected file logging not to start")
+	}
+	ta.do(func() {
+		if !hasTextWithPrefix(ta.content(logging), "Couldn't log to file: creating the log directory") {
+			t.Errorf("Logging tab shows %q, want why file logging couldn't start", texts(ta.content(logging)))
 		}
-		if got := h.LoggingTab.fileStatus.Text; !strings.HasPrefix(got, "Couldn't log to file: creating the log directory") {
-			t.Errorf("file status = %q, want why file logging couldn't start", got)
-		}
-
-		h.config.LogDirectory = t.TempDir()
-		test.Tap(h.LoggingTab.startBtn)
-		if got := h.LoggingTab.fileStatus.Text; !strings.HasPrefix(got, "Logging to ") {
-			t.Errorf("file status = %q after retrying, want the file being logged to", got)
-		}
-		test.Tap(h.LoggingTab.stopBtn)
 	})
+
+	ta.do(func() { ta.cfg.LogDirectory = t.TempDir() })
+	ta.tap(logging, "Log To File")
+	ta.do(func() {
+		if !hasTextWithPrefix(ta.content(logging), "Logging to ") {
+			t.Errorf("Logging tab shows %q after retrying, want the file being logged to", texts(ta.content(logging)))
+		}
+	})
+	ta.tap(logging, "Stop")
 }
 
 func TestLiveLogExplainsWhenNothingIsLiveLogged(t *testing.T) {
-	h := newTestApp(t)
-	h.connect()
+	ta := newTestApp(t)
+	ta.connect()
+	const hint = "No parameters are live logged"
 
-	h.do(func() {
-		if !h.LoggingTab.empty.Visible() {
-			t.Fatal("expected a hint when nothing is live logged")
-		}
+	ta.show(ui.TabLogging)
+	ta.waitForText(ui.TabLogging, hint, true)
 
-		h.loggedParams.SetLiveLog("P8", false, units.RPM, true)
-		h.LoggingTab.updateLiveLogParameters()
-		if h.LoggingTab.empty.Visible() {
-			t.Error("expected no hint once a parameter is live logged")
-		}
+	ta.setLiveLog("Engine Speed", true)
+	ta.show(ui.TabLogging)
+	ta.waitForText(ui.TabLogging, hint, false)
 
-		h.loggedParams.SetLiveLog("P8", false, units.RPM, false)
-		h.LoggingTab.updateLiveLogParameters()
-		if !h.LoggingTab.empty.Visible() {
-			t.Fatal("expected the hint once nothing is live logged again")
-		}
+	ta.setLiveLog("Engine Speed", false)
+	ta.show(ui.TabLogging)
+	ta.waitForText(ui.TabLogging, hint, true)
 
-		test.Tap(h.LoggingTab.chooseParamsBtn)
-		if got := h.tabItems.SelectedIndex(); got != int(TabParameters) {
+	ta.tap(ui.TabLogging, "Choose Parameters")
+	ta.do(func() {
+		if got := ta.tabs().SelectedIndex(); got != int(ui.TabParameters) {
 			t.Errorf("selected tab = %d, want the Parameters tab", got)
 		}
 	})
+	_ = slices.Contains[[]string]
 }

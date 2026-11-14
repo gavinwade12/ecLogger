@@ -1,135 +1,146 @@
-package main
+package main_test
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/test"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/gavinwade12/ecLogger/internal/logging"
-	"github.com/gavinwade12/ecLogger/units"
+	ui "github.com/gavinwade12/ecLogger/cmd/logger-ui"
 )
 
 func TestUnitOptions(t *testing.T) {
-	want := []string{"kPa", "bar", "hPa", "inHg", "mmHg", "psi"}
-	for i := 0; i < 20; i++ { // map iteration order varies between runs
-		if got := unitOptions(units.KPA); !reflect.DeepEqual(got, want) {
-			t.Fatalf("unitOptions(kPa) = %v, want %v", got, want)
+	ta := newTestApp(t)
+	ta.connect()
+	ta.show(ui.TabParameters)
+
+	// a parameter can be shown in its default unit, then the units it
+	// converts to in a stable order. The order comes from a map, so it
+	// would vary between parameters if it weren't stable.
+	var kpa, gear int
+	ta.do(func() {
+		for _, s := range findAll[*widget.Select](ta.content(ui.TabParameters), nil) {
+			switch s.Selected {
+			case "kPa":
+				kpa++
+				if want := []string{"kPa", "bar", "hPa", "inHg", "mmHg", "psi"}; !reflect.DeepEqual(s.Options, want) {
+					t.Fatalf("options of a kPa parameter = %v, want %v", s.Options, want)
+				}
+			case "gear":
+				gear++
+				if want := []string{"gear"}; !reflect.DeepEqual(s.Options, want) {
+					t.Fatalf("options of a gear parameter = %v, want %v", s.Options, want)
+				}
+			}
 		}
-	}
-	if got := unitOptions(units.Gear); !reflect.DeepEqual(got, []string{"gear"}) {
-		t.Fatalf("unitOptions(gear) = %v, want [gear]", got)
+	})
+	if kpa < 2 || gear == 0 {
+		t.Errorf("found %d kPa and %d gear parameters, want several of each to compare", kpa, gear)
 	}
 }
 
-func TestFileLoggingDisablesParameterChanges(t *testing.T) {
-	h := newTestApp(t)
-	h.connect()
+// parameterInputs returns the checks and selects on the Parameters tab. It
+// must be called on the main thread.
+func (ta *testApp) parameterInputs() (inputs []fyne.Disableable) {
+	walk(ta.content(ui.TabParameters), func(o fyne.CanvasObject, _ []fyne.CanvasObject) {
+		switch v := o.(type) {
+		case *widget.Check:
+			inputs = append(inputs, v)
+		case *widget.Select:
+			inputs = append(inputs, v)
+		}
+	})
+	return inputs
+}
 
-	h.do(func() {
-		if len(h.ParametersTab.inputs) == 0 {
+func TestFileLoggingDisablesParameterChanges(t *testing.T) {
+	ta := newTestApp(t)
+	ta.connect()
+	const hint = "Parameters can't be changed while logging to file"
+
+	ta.setFileLog("Engine Speed", true)
+	ta.do(func() {
+		if len(ta.parameterInputs()) == 0 {
 			t.Fatal("expected parameter inputs")
 		}
-		h.loggedParams.SetLogToFile("P8", false, units.RPM, true)
-		h.LoggingTab.startFileLogging()
-		for _, input := range h.ParametersTab.inputs {
+	})
+	ta.show(ui.TabLogging)
+	ta.tap(ui.TabLogging, "Log To File")
+	ta.show(ui.TabParameters)
+	ta.do(func() {
+		for _, input := range ta.parameterInputs() {
 			if !input.Disabled() {
 				t.Fatalf("%T enabled while file logging", input)
 			}
 		}
-		if !h.ParametersTab.locked.Visible() {
+		if !slices.Contains(texts(ta.content(ui.TabParameters)), hint) {
 			t.Error("expected a hint saying why parameters can't be changed")
 		}
+	})
 
-		h.LoggingTab.stopFileLogging()
-		for _, input := range h.ParametersTab.inputs {
+	ta.show(ui.TabLogging)
+	ta.tap(ui.TabLogging, "Stop")
+	ta.show(ui.TabParameters)
+	ta.do(func() {
+		for _, input := range ta.parameterInputs() {
 			if input.Disabled() {
 				t.Fatalf("%T disabled after file logging", input)
 			}
 		}
-		if h.ParametersTab.locked.Visible() {
+		if slices.Contains(texts(ta.content(ui.TabParameters)), hint) {
 			t.Error("expected no hint once parameters can be changed")
 		}
 	})
 }
 
 func TestLiveLogCheckLogsParameter(t *testing.T) {
-	h := newTestApp(t)
-	h.connect()
+	ta := newTestApp(t)
+	ta.connect()
 
-	h.do(func() {
-		check := h.ParametersTab.inputs[1].(*widget.Check) // the first parameter's Live Log
-		test.Tap(check)
+	ta.setLiveLog("Engine Speed", true)
+	ta.show(ui.TabLogging)
+	ta.waitForTile("a tile", "Engine Speed", func(tileView) bool { return true })
+	if n := len(ta.tiles()); n != 1 {
+		t.Fatalf("%d tiles, want one for Engine Speed", n)
+	}
+	ta.waitForLiveReads()
 
-		if h.loggedParams.Len() != 1 {
-			t.Fatalf("%d logged parameters, want 1", h.loggedParams.Len())
-		}
-		if len(h.LoggingTab.liveLogModels) != 1 || !h.LoggingTab.runner.Running() {
-			t.Fatal("expected the parameter to be live logged")
-		}
-
-		test.Tap(check)
-		if h.loggedParams.Len() != 0 || len(h.LoggingTab.liveLogModels) != 0 || h.LoggingTab.runner.Running() {
-			t.Fatal("expected the parameter to no longer be logged")
-		}
-	})
+	ta.setLiveLog("Engine Speed", false)
+	ta.show(ui.TabLogging)
+	if n := len(ta.tiles()); n != 0 {
+		t.Errorf("%d tiles after unchecking Live Log, want none", n)
+	}
+	ta.assertLiveReadsStopped()
 }
 
 func TestUnitChangeResetsLiveLogMinMax(t *testing.T) {
-	h := newTestApp(t)
-	h.connect()
+	ta := newTestApp(t)
+	ta.connect()
+	ta.setLiveLog("Vehicle Speed", true)
+	unit := ta.paramRow("Vehicle Speed").unit
+	ta.show(ui.TabLogging)
 
-	var id string
-	var unit *widget.Select
-	h.do(func() {
-		// inputs are Log To File, Live Log and unit for each parameter
-		for i := 0; i < len(h.ParametersTab.inputs); i += 3 {
-			if s := h.ParametersTab.inputs[i+2].(*widget.Select); s.Selected == string(units.MPH) {
-				test.Tap(h.ParametersTab.inputs[i+1].(*widget.Check))
-				unit = s
-				break
-			}
-		}
-		if unit == nil {
-			t.Fatal("no parameter in mph")
-		}
-		id = h.LoggingTab.liveLogModels[0].Id
-	})
-
-	// let the min/max build up from the fake connection's values
-	var before logging.Stats
-	h.waitFor("some live log values", func() bool {
-		before, _ = h.LoggingTab.runner.Stats(id)
-		return before.Count >= 20
-	})
-
-	h.do(func() {
-		unit.SetSelected(string(units.KMH))
-
-		// the min/max come from the session, so the unit change must have
-		// started a new one rather than keep comparing against mph values
-		if after, _ := h.LoggingTab.runner.Stats(id); after.Count >= before.Count {
-			t.Errorf("min/max kept %d values across the unit change, want a fresh session", after.Count)
-		}
-	})
-}
-
-func TestParameterColumnsFitTheirUnits(t *testing.T) {
-	test.NewTempApp(t)
-	widths := columnWidths([][]string{{"V"}, {"raw ecu value"}})
-	if len(widths) != 3 {
-		t.Fatalf("got %d column widths, want 3", len(widths))
+	// let the min and max build up from the fake connection's values
+	v := ta.waitForTile("a min and max", "Vehicle Speed", func(v tileView) bool { return v.min != v.max && v.min != noValue })
+	if v.unit != "km/h" {
+		t.Fatalf("unit = %q, want km/h", v.unit)
 	}
 
-	text := fyne.MeasureText("raw ecu value", theme.TextSize(), fyne.TextStyle{}).Width
-	if widths[2] < text+theme.InnerPadding()*2 {
-		t.Errorf("unit column is %v wide, too narrow for %q (%v)", widths[2], "raw ecu value", text)
+	// with nothing read since the change, a tile that has reset shows no
+	// value, rather than comparing against the old unit's values
+	ta.ecu.holdLive()
+	ta.show(ui.TabParameters)
+	ta.do(func() { unit.SetSelected("mph") })
+	ta.show(ui.TabLogging)
+	v = ta.waitForTile("the tile", "Vehicle Speed", func(tileView) bool { return true })
+	if v.value != noValue || v.min != noValue || v.max != noValue {
+		t.Errorf("tile shows value %q, min %q, max %q after the unit change, want a fresh session", v.value, v.min, v.max)
 	}
-	for i, heading := range []string{headingLogToFile, headingLiveLog} {
-		if w := fyne.MeasureText(heading, theme.TextSize(), fyne.TextStyle{}).Width; widths[i] < w {
-			t.Errorf("%q column is %v wide, want at least %v", heading, widths[i], w)
-		}
+
+	ta.ecu.releaseLive()
+	v = ta.waitForTile("a value in the new unit", "Vehicle Speed", hasValue)
+	if v.unit != "mph" {
+		t.Errorf("unit = %q, want mph", v.unit)
 	}
 }

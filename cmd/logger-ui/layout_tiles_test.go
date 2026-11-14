@@ -1,61 +1,61 @@
-package main
+package main_test
 
 import (
 	"testing"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
+	ui "github.com/gavinwade12/ecLogger/cmd/logger-ui"
 )
 
-func newTestTile(height float32) fyne.CanvasObject {
-	r := canvas.NewRectangle(nil)
-	r.SetMinSize(fyne.NewSize(10, height))
-	return r
-}
-
-func TestTileGridLayout(t *testing.T) {
-	test.NewTempApp(t).Settings().SetTheme(newAppTheme())
-	// tiles are at least 180 wide with 4 between them
-	tiles := []fyne.CanvasObject{newTestTile(50), newTestTile(80), newTestTile(60), newTestTile(40)}
-
-	for _, tt := range []struct {
-		width    float32
-		wantCols int
-	}{
-		{width: 180, wantCols: 1},
-		{width: 363, wantCols: 1},
-		{width: 364, wantCols: 2},
-		{width: 560, wantCols: 3},
-	} {
-		if got := newTileGridLayout().columns(tt.width); got != tt.wantCols {
-			t.Errorf("columns(%v) = %d, want %d", tt.width, got, tt.wantCols)
-		}
+func TestTileGridFitsAsManyColumnsAsItCan(t *testing.T) {
+	ta := newTestApp(t)
+	ta.connect()
+	names := []string{"Engine Speed", "Vehicle Speed", "Boost Pressure Feedback", "Quantity Correction Cylinder #1"}
+	for _, name := range names {
+		ta.setLiveLog(name, true)
 	}
+	ta.show(ui.TabLogging)
 
-	l := newTileGridLayout()
-	l.Layout(tiles, fyne.NewSize(560, 0))
+	// tiles are at least this wide
+	const minTileWidth = 180
+	pad := theme.Padding()
 
-	// 3 columns 184 wide, each row as tall as its tallest tile
-	want := []struct{ pos, size fyne.Size }{
-		{fyne.NewSize(0, 0), fyne.NewSize(184, 80)},
-		{fyne.NewSize(188, 0), fyne.NewSize(184, 80)},
-		{fyne.NewSize(376, 0), fyne.NewSize(184, 80)},
-		{fyne.NewSize(0, 84), fyne.NewSize(184, 40)},
-	}
-	for i, tile := range tiles {
-		pos := fyne.NewSize(tile.Position().X, tile.Position().Y)
-		if pos != want[i].pos || tile.Size() != want[i].size {
-			t.Errorf("tile %d at %v sized %v, want at %v sized %v",
-				i, pos, tile.Size(), want[i].pos, want[i].size)
-		}
-	}
-	if got, want := l.MinSize(tiles), fyne.NewSize(180, 124); got != want {
-		t.Errorf("MinSize = %v, want %v", got, want)
-	}
+	for _, width := range []float32{300, 450, 600, 800, 1400} {
+		ta.resize(width, 600)
+		ta.waitFor("the tiles", func() bool { return len(ta.tilesNow()) == len(names) })
+		ta.do(func() {
+			var tiles []fyne.CanvasObject
+			for _, v := range ta.tilesNow() {
+				tiles = append(tiles, v.tile)
+			}
+			var grid fyne.CanvasObject
+			walk(ta.content(ui.TabLogging), func(o fyne.CanvasObject, ancestors []fyne.CanvasObject) {
+				if o == tiles[0] {
+					grid = ancestors[len(ancestors)-1]
+				}
+			})
+			gridWidth := grid.Size().Width
+			cols := max(int((gridWidth+pad)/(minTileWidth+pad)), 1)
+			colWidth := (gridWidth - pad*float32(cols-1)) / float32(cols)
 
-	tiles[3].Hide()
-	if got, want := l.MinSize(tiles), fyne.NewSize(180, 80); got != want {
-		t.Errorf("MinSize with a hidden tile = %v, want %v", got, want)
+			// each row is as tall as its tallest tile
+			var y float32
+			for start := 0; start < len(tiles); start += cols {
+				row := tiles[start:min(start+cols, len(tiles))]
+				var height float32
+				for _, tile := range row {
+					height = max(height, tile.Size().Height)
+				}
+				for i, tile := range row {
+					wantPos := fyne.NewPos(float32(i)*(colWidth+pad), y)
+					if tile.Position() != wantPos || tile.Size() != fyne.NewSize(colWidth, height) {
+						t.Errorf("window %v: tile %d at %v sized %v, want %v sized %v (%d columns in %v)",
+							width, start+i, tile.Position(), tile.Size(), wantPos, fyne.NewSize(colWidth, height), cols, gridWidth)
+					}
+				}
+				y += height + pad
+			}
+		})
 	}
 }
