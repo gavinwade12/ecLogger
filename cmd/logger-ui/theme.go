@@ -21,6 +21,13 @@ const (
 	// sizeNameFormMaxWidth is the widest a form gets, so its inputs don't
 	// stretch across a wide screen.
 	sizeNameFormMaxWidth fyne.ThemeSizeName = "formMaxWidth"
+	// sizeNameChartLaneMinHeight is the shortest a chart lane gets, its
+	// title included. Four fit on an 800x480 screen beside the tab bar.
+	sizeNameChartLaneMinHeight fyne.ThemeSizeName = "chartLaneMinHeight"
+	// sizeNameChartMinWidth is the narrowest a chart gets.
+	sizeNameChartMinWidth fyne.ThemeSizeName = "chartMinWidth"
+	// sizeNameChartLineWidth is the thickness of a chart's traces.
+	sizeNameChartLineWidth fyne.ThemeSizeName = "chartLineWidth"
 
 	// colorNameTile is the background of a tile.
 	colorNameTile fyne.ThemeColorName = "tile"
@@ -58,6 +65,12 @@ func (t appTheme) Size(name fyne.ThemeSizeName) float32 {
 		return 12
 	case sizeNameFormMaxWidth:
 		return 560
+	case sizeNameChartLaneMinHeight:
+		return 84
+	case sizeNameChartMinWidth:
+		return 240
+	case sizeNameChartLineWidth:
+		return 1.5
 	}
 	return t.Theme.Size(name)
 }
