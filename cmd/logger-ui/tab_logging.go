@@ -44,6 +44,8 @@ type LoggingTab struct {
 	liveLogModelsMu sync.Mutex
 
 	logFile io.WriteCloser
+	// logPath is the path of logFile, while it's open
+	logPath string
 }
 
 func NewLoggingTab(app *App) *LoggingTab {
@@ -124,6 +126,7 @@ func (t *LoggingTab) startFileLogging() {
 		return
 	}
 	t.logFile = f
+	t.logPath = f.Name()
 
 	// don't allow parameter changes while logging to file
 	// to keep file results consistent
@@ -133,6 +136,7 @@ func (t *LoggingTab) startFileLogging() {
 	t.stopBtn.Show()
 	t.fileStatus.Importance = widget.MediumImportance
 	t.fileStatus.SetText("Logging to " + filepath.Base(f.Name()))
+	t.app.LogFilesTab.refresh()
 
 	t.runner.Subscribe("fileLogging", func(values map[string]ssm2.ParameterValue) {
 		if err := csvWriter.Write(time.Now(), values); err != nil {
@@ -171,6 +175,7 @@ func (t *LoggingTab) stopFileLogging() {
 	t.runner.Unsubscribe("fileLogging")
 	t.logFile.Close()
 	t.logFile = nil
+	t.logPath = ""
 
 	// re-enable all the parameter input
 	t.app.ParametersTab.toggleParameterChanges(true)
@@ -178,7 +183,12 @@ func (t *LoggingTab) stopFileLogging() {
 	t.stopBtn.Hide()
 	t.startBtn.Show()
 	t.fileStatus.SetText("")
+	t.app.LogFilesTab.refresh()
 }
+
+// CurrentLogFile returns the path of the file being logged to, or "" when
+// not logging to a file.
+func (t *LoggingTab) CurrentLogFile() string { return t.logPath }
 
 // unitFor returns the configured unit for a logged parameter.
 func (t *LoggingTab) unitFor(id string, defaultUnit units.Unit) units.Unit {

@@ -15,8 +15,9 @@ const (
 	TabParameters TabType = 1
 	TabLogging    TabType = 2
 	TabGraphing   TabType = 3
-	TabDTCs       TabType = 4
-	TabSettings   TabType = 5
+	TabLogFiles   TabType = 4
+	TabDTCs       TabType = 5
+	TabSettings   TabType = 6
 )
 
 type App struct {
@@ -32,6 +33,7 @@ type App struct {
 	ParametersTab *ParametersTab
 	LoggingTab    *LoggingTab
 	GraphingTab   *GraphingTab
+	LogFilesTab   *LogFilesTab
 	DTCsTab       *DTCsTab
 	SettingsTab   *SettingsTab
 
@@ -63,6 +65,7 @@ func NewApp(fyneApp fyne.App, cfg *config.Config, open OpenFunc, listPorts func(
 	app.ParametersTab = NewParametersTab(app)
 	app.LoggingTab = NewLoggingTab(app)
 	app.GraphingTab = NewGraphingTab(app)
+	app.LogFilesTab = NewLogFilesTab(app)
 	app.DTCsTab = NewDTCsTab(app)
 	app.SettingsTab = NewSettingsTab(app)
 	app.tabItems = container.NewAppTabs(
@@ -70,9 +73,15 @@ func NewApp(fyneApp fyne.App, cfg *config.Config, open OpenFunc, listPorts func(
 		container.NewTabItem("Parameters", app.ParametersTab.Container()),
 		container.NewTabItem("Logging", app.LoggingTab.Container()),
 		container.NewTabItem("Graphing", app.GraphingTab.Container()),
+		container.NewTabItem("Log Files", app.LogFilesTab.Container()),
 		container.NewTabItem("DTCs", app.DTCsTab.Container()),
 		container.NewTabItem("Settings", app.SettingsTab.Container()),
 	)
+	app.tabItems.OnSelected = func(item *container.TabItem) {
+		if item == app.tabItems.Items[TabLogFiles] {
+			app.LogFilesTab.refresh()
+		}
+	}
 	app.toggleConnectionRelatedTabs(false)
 	app.tabItems.SetTabLocation(container.TabLocationLeading)
 

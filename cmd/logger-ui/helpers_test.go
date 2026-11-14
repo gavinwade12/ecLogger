@@ -260,7 +260,7 @@ func (ta *testApp) waitForStatus(state string) {
 }
 
 func tabName(tab ui.TabType) string {
-	return [...]string{"Connection", "Parameters", "Logging", "Graphing", "DTCs", "Settings"}[tab]
+	return [...]string{"Connection", "Parameters", "Logging", "Graphing", "Log Files", "DTCs", "Settings"}[tab]
 }
 
 // connect taps Connect and waits for the connection to be initialized.
