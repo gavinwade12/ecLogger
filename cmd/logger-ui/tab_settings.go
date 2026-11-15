@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/widget"
+	"github.com/gavinwade12/ecLogger/internal/buildinfo"
 )
 
 type SettingsTab struct {
@@ -33,6 +34,7 @@ var settingsFormItems = []func(app *App) []*widget.FormItem{
 				"Open on the Logging tab when the app starts"),
 			newFormItemWithHint("Live Graph Window", newLiveGraphWindowSelect(app),
 				"How much recent data the Graphing tab shows while connected"),
+			widget.NewFormItem("Version", widget.NewLabel(buildinfo.String())),
 		}
 	},
 }

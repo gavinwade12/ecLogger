@@ -9,6 +9,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	go.bug.st/serial v1.8.0
 	golang.org/x/image v0.24.0
+	golang.org/x/mod v0.26.0
 )
 
 require (

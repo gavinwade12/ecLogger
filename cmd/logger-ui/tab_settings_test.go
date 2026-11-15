@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2/widget"
 	ui "github.com/gavinwade12/ecLogger/cmd/logger-ui"
+	"github.com/gavinwade12/ecLogger/internal/buildinfo"
 )
 
 // liveWindowSelect returns the Settings tab's Live Graph Window select.
@@ -45,4 +46,16 @@ func TestSettingsLiveGraphWindow(t *testing.T) {
 			t.Errorf("LiveGraphMinutes = %d, want 15", ta.cfg.LiveGraphMinutes)
 		}
 	})
+}
+
+func TestSettingsVersion(t *testing.T) {
+	ta := newTestApp(t)
+	texts := ta.texts(ui.TabSettings)
+	i := slices.Index(texts, "Version")
+	if i < 0 {
+		t.Fatalf("no Version row: %v", texts)
+	}
+	if i+1 >= len(texts) || texts[i+1] != buildinfo.String() {
+		t.Errorf("Version row doesn't show %q: %v", buildinfo.String(), texts)
+	}
 }
