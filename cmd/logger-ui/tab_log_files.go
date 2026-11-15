@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -82,10 +83,20 @@ type logFile struct {
 // listLogFiles returns the CSV files in dir, newest first. A directory
 // that doesn't exist has no files.
 func listLogFiles(dir string) ([]logFile, error) {
-	entries, err := os.ReadDir(dir)
+	// Check what's at dir before reading it: whether ReadDir on a file
+	// counts as not-exist varies by OS and Go version, and a file there
+	// shouldn't look like an empty directory.
+	info, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, errors.New("it's a file, not a directory")
+	}
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
