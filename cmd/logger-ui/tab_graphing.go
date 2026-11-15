@@ -33,6 +33,10 @@ type GraphingTab struct {
 	// or to nothing when not.
 	liveBtn  *widget.Button
 	fileName *widget.Label
+	// zoomInBtn, zoomOutBtn and fitBtn change the time the chart shows,
+	// and are shown with it. Fit zooms out to the whole log, or, when a
+	// live chart has stopped following the present, resumes following.
+	zoomInBtn, zoomOutBtn, fitBtn *widget.Button
 
 	// panel lists the log's columns to choose from, and is hidden until a
 	// log is open. It can also be hidden to give the chart the full width.
@@ -43,11 +47,11 @@ type GraphingTab struct {
 	chart     *laneChart
 	// header and view are refreshed to lay out again when something in
 	// them is shown or hidden
-	buttons, header, view *fyne.Container
-	chartView             fyne.CanvasObject
-	status                *hint
-	statusView            fyne.CanvasObject
-	chooseParamsBtn       *widget.Button
+	buttons, navButtons, header, view *fyne.Container
+	chartView                         *container.Scroll
+	status                            *hint
+	statusView                        fyne.CanvasObject
+	chooseParamsBtn                   *widget.Button
 	// charted is whether the chart is shown rather than the status, and
 	// needsParams whether the status offers to choose parameters
 	charted, needsParams bool
@@ -65,15 +69,18 @@ type GraphingTab struct {
 
 func NewGraphingTab(app *App) *GraphingTab {
 	t := &GraphingTab{
-		app:       app,
-		openBtn:   widget.NewButtonWithIcon("Open…", theme.FolderOpenIcon(), nil),
-		paramsBtn: widget.NewButtonWithIcon("Parameters", theme.ListIcon(), nil),
-		liveBtn:   widget.NewButtonWithIcon("Live", theme.MediaPlayIcon(), nil),
-		fileName:  widget.NewLabel(""),
-		checkList: container.NewVBox(),
-		chart:     newLaneChart(),
-		status:    newHint(""),
-		panelOpen: true,
+		app:        app,
+		openBtn:    widget.NewButtonWithIcon("Open…", theme.FolderOpenIcon(), nil),
+		paramsBtn:  widget.NewButtonWithIcon("Parameters", theme.ListIcon(), nil),
+		liveBtn:    widget.NewButtonWithIcon("Live", theme.MediaPlayIcon(), nil),
+		zoomInBtn:  widget.NewButtonWithIcon("", theme.ZoomInIcon(), nil),
+		zoomOutBtn: widget.NewButtonWithIcon("", theme.ZoomOutIcon(), nil),
+		fitBtn:     widget.NewButtonWithIcon("", theme.ZoomFitIcon(), nil),
+		fileName:   widget.NewLabel(""),
+		checkList:  container.NewVBox(),
+		chart:      newLaneChart(),
+		status:     newHint(""),
+		panelOpen:  true,
 	}
 	t.initLive()
 	t.fileName.Truncation = fyne.TextTruncateEllipsis
@@ -85,6 +92,10 @@ func NewGraphingTab(app *App) *GraphingTab {
 	t.paramsBtn.Hide()
 	t.liveBtn.Hide()
 	t.liveBtn.OnTapped = t.closeFile
+	t.navButtons = container.NewHBox(t.zoomInBtn, t.zoomOutBtn, t.fitBtn)
+	t.zoomInBtn.OnTapped = func() { t.zoomButton(1 / buttonZoom) }
+	t.zoomOutBtn.OnTapped = func() { t.zoomButton(buttonZoom) }
+	t.fitBtn.OnTapped = t.fitView
 	t.chooseParamsBtn = widget.NewButton("Choose Parameters", func() { app.SelectTab(TabParameters) })
 	t.chooseParamsBtn.Hide()
 	t.status.Wrapping = fyne.TextWrapWord
@@ -94,6 +105,9 @@ func NewGraphingTab(app *App) *GraphingTab {
 	t.panel.Hide()
 	t.chartView = container.NewVScroll(t.chart)
 	t.chartView.Hide()
+	t.chart.SetScroller(t.chartView)
+	t.chart.SetBounds(t.chartBounds)
+	t.chart.OnNavigate(t.pauseLive)
 	t.statusView = container.NewCenter(container.NewVBox(
 		container.NewGridWrap(fyne.NewSize(360, t.status.MinSize().Height*3), t.status),
 		container.NewCenter(t.chooseParamsBtn)))
@@ -106,7 +120,7 @@ func (t *GraphingTab) Container() fyne.CanvasObject {
 		return t.view
 	}
 	t.buttons = container.NewHBox(t.openBtn, t.paramsBtn, t.liveBtn)
-	t.header = container.NewBorder(nil, nil, t.buttons, nil, t.fileName)
+	t.header = container.NewBorder(nil, nil, t.buttons, t.navButtons, t.fileName)
 	body := container.NewStack(t.chartView, t.statusView)
 	t.view = container.NewBorder(container.NewPadded(t.header), nil, t.panel, nil, body)
 	return t.view
@@ -146,6 +160,7 @@ func (t *GraphingTab) showOpenDialog() {
 func (t *GraphingTab) OpenFile(path string) {
 	id := t.loads.Add(1)
 	t.fileMode = true
+	t.paused = false
 	t.syncTicker()
 	t.fileName.SetText(filepath.Base(path))
 	t.setHint("Loading " + filepath.Base(path) + "…")
@@ -208,6 +223,7 @@ func (t *GraphingTab) setLog(l *logging.Log) {
 func (t *GraphingTab) closeFile() {
 	t.loads.Add(1) // drop a file still loading
 	t.fileMode = false
+	t.paused = false
 	t.log = nil
 	t.resetList()
 	t.showCurrent()
@@ -273,6 +289,18 @@ func (t *GraphingTab) updateView() {
 	setShown(t.paramsBtn, hasList)
 	setShown(t.panel, hasList && t.panelOpen)
 	setShown(t.liveBtn, t.fileMode)
+	setShown(t.navButtons, t.charted)
+	if t.liveMode() {
+		if t.paused {
+			t.fileName.SetText("Live (paused)")
+			t.fitBtn.SetIcon(theme.MediaPlayIcon())
+		} else {
+			t.fileName.SetText("Live")
+			t.fitBtn.SetIcon(theme.ZoomFitIcon())
+		}
+	} else {
+		t.fitBtn.SetIcon(theme.ZoomFitIcon())
+	}
 	if t.app.connection != nil {
 		t.liveBtn.SetText("Live")
 		t.liveBtn.SetIcon(theme.MediaPlayIcon())
@@ -285,6 +313,48 @@ func (t *GraphingTab) updateView() {
 		t.header.Refresh()
 		t.view.Refresh()
 	}
+}
+
+// buttonZoom is how much the zoom buttons scale the time shown.
+const buttonZoom = 2.0
+
+// chartBounds is the span of time the chart can be zoomed out to and panned
+// within: the whole log, or the live view as of its last refresh.
+func (t *GraphingTab) chartBounds() (from, to time.Time) {
+	if t.fileMode {
+		if t.log == nil || len(t.log.Times) == 0 {
+			return from, to
+		}
+		from, to = t.log.Times[0], t.log.Times[len(t.log.Times)-1]
+		if !to.After(from) {
+			to = from.Add(time.Second)
+		}
+		return from, to
+	}
+	if t.viewNow.IsZero() {
+		return from, to
+	}
+	return t.liveView(t.viewNow)
+}
+
+// zoomButton zooms by factor for the zoom buttons: about now on a live chart,
+// so the present stays in view, and about the middle otherwise.
+func (t *GraphingTab) zoomButton(factor float64) {
+	if t.liveMode() && !t.viewNow.IsZero() {
+		t.chart.zoomAbout(t.viewNow, factor)
+		return
+	}
+	t.chart.ZoomBy(factor)
+}
+
+// fitView zooms the chart out to the whole log, or back to following the
+// present when live.
+func (t *GraphingTab) fitView() {
+	if t.liveMode() {
+		t.resumeLive()
+		return
+	}
+	t.chart.Fit()
 }
 
 func setShown(o fyne.CanvasObject, shown bool) {

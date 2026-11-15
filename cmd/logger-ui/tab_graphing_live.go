@@ -68,6 +68,14 @@ type live struct {
 
 	// selected is whether the Graphing tab is the one showing
 	selected bool
+	// paused is when the live chart has stopped following the present
+	// because it was zoomed or panned. The view then stays where it is and
+	// the ticker is off, as nothing on the chart changes; resuming goes
+	// back to the whole window.
+	paused bool
+	// viewNow is the present as of the last time the view followed it,
+	// which the view's labels and bounds count from
+	viewNow time.Time
 	// lanesStale is when the lanes need building before they're shown,
 	// since the checks changed while the tab was hidden
 	lanesStale bool
@@ -220,6 +228,7 @@ func (t *GraphingTab) showCurrent() {
 	case t.liveMode():
 		t.rebuildLiveList()
 	default:
+		t.paused = false
 		t.resetList()
 		t.fileName.SetText("")
 		t.setHint(disconnectedHint)
@@ -308,13 +317,20 @@ func (t *GraphingTab) liveLane(e liveEntry) chartLane {
 		Downsample: func(from, to time.Time, n int) logging.Downsampled {
 			return t.window.Downsample(e.id, from, to, n)
 		},
-		Range: func() (float64, float64, bool) { return t.window.Range(e.id) },
+		ValueAt: func(at time.Time, tol time.Duration) (float64, bool) {
+			return t.window.ValueAt(e.id, at, tol)
+		},
 	}
 }
 
 // refreshLive moves the chart on to the present and redraws it.
 func (t *GraphingTab) refreshLive() {
+	if t.paused {
+		t.chart.Rescale()
+		return
+	}
 	now := t.now()
+	t.viewNow = now
 	from, to := t.liveView(now)
 	t.chart.SetView(from, to, now, relativeLabels(now))
 }
@@ -335,10 +351,34 @@ func (t *GraphingTab) liveView(now time.Time) (from, to time.Time) {
 	return from, from.Add(shown + shown/liveAheadDivisor)
 }
 
+// pauseLive stops a live chart following the present, leaving the view
+// where it is, as of now. It's called before the user changes the view.
+func (t *GraphingTab) pauseLive() {
+	if !t.liveMode() || t.paused {
+		return
+	}
+	t.refreshLive()
+	t.paused = true
+	t.syncTicker()
+	t.updateView()
+}
+
+// resumeLive has a paused live chart follow the present again, showing the
+// whole window.
+func (t *GraphingTab) resumeLive() {
+	if !t.paused {
+		return
+	}
+	t.paused = false
+	t.chart.tapped = false
+	t.syncTicker()
+	t.updateView()
+}
+
 // syncTicker starts or stops the timer that redraws the live chart, so it
 // runs only while the chart is live and can be seen.
 func (t *GraphingTab) syncTicker() {
-	want := t.selected && t.liveMode() && t.charted
+	want := t.selected && t.liveMode() && t.charted && !t.paused
 	switch {
 	case want && t.stopTick == nil:
 		stop := make(chan struct{})

@@ -76,8 +76,8 @@ func TestLanesFromLog(t *testing.T) {
 	if len(lanes) != 2 || lanes[0].Name != "b" || lanes[1].Unit != units.RPM {
 		t.Fatalf("lanes = %+v", lanes)
 	}
-	if min, max, ok := lanes[1].Range(); !ok || min != 1 || max != 3 {
-		t.Errorf("range = %v, %v, %v", min, max, ok)
+	if v, ok := lanes[1].ValueAt(start.Add(900*time.Millisecond), 200*time.Millisecond); !ok || v != 3 {
+		t.Errorf("ValueAt = %v, %v, want 3", v, ok)
 	}
 	d := lanes[0].Downsample(start, start.Add(2*time.Second), 2)
 	if d.Buckets[0].N != 0 || d.Buckets[1].Max != 5 {
@@ -136,7 +136,7 @@ func TestChartGeometry(t *testing.T) {
 	start := time.Now()
 	wide := seriesLane("wide", start, time.Second, []float64{0, 123456})
 	narrow := seriesLane("narrow", start, time.Second, []float64{0, 1})
-	c, r := newTestChart(t, 600, 400, []chartLane{wide, narrow}, start, start.Add(time.Second))
+	c, r := newTestChart(t, 600, 400, []chartLane{wide, narrow}, start, start.Add(2*time.Second))
 	m := c.metrics()
 	f := r.frame
 
@@ -376,9 +376,12 @@ func TestChartSetViewReadsRangesAgain(t *testing.T) {
 	start := time.Now()
 	hi := 1.0
 	lane := chartLane{
-		Name:       "live",
-		Downsample: func(from, to time.Time, n int) logging.Downsampled { return logging.Downsampled{} },
-		Range:      func() (float64, float64, bool) { return 0, hi, true },
+		Name: "live",
+		Downsample: func(from, to time.Time, n int) logging.Downsampled {
+			d := logging.Downsampled{Buckets: make([]logging.Bucket, n)}
+			d.Buckets[0] = logging.Bucket{Min: 0, Max: hi, First: 0, Last: hi, N: 2}
+			return d
+		},
 	}
 	c, r := newTestChart(t, 400, 300, []chartLane{lane}, start, start.Add(time.Second))
 	if got := r.frame.axes[0].hi; got != 1 {

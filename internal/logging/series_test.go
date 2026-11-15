@@ -113,29 +113,6 @@ func TestDownsampleNeighboursSkipNaN(t *testing.T) {
 	}
 }
 
-func TestRange(t *testing.T) {
-	nan := math.NaN()
-	tests := []struct {
-		name     string
-		in       []float64
-		min, max float64
-		ok       bool
-	}{
-		{"empty", nil, 0, 0, false},
-		{"only non-finite", []float64{nan, math.Inf(-1)}, 0, 0, false},
-		{"mixed", []float64{3, nan, -2, math.Inf(1), 8}, -2, 8, true},
-		{"single", []float64{4}, 4, 4, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			min, max, ok := Range(tt.in)
-			if min != tt.min || max != tt.max || ok != tt.ok {
-				t.Errorf("= %v, %v, %v; want %v, %v, %v", min, max, ok, tt.min, tt.max, tt.ok)
-			}
-		})
-	}
-}
-
 func TestNiceAxis(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -179,5 +156,38 @@ func TestTicks(t *testing.T) {
 	}
 	if Ticks(0, 1, 0) != nil || Ticks(1, 0, 1) != nil {
 		t.Error("bad input should give no ticks")
+	}
+}
+
+func TestValueAt(t *testing.T) {
+	nan := math.NaN()
+	times := []time.Time{at(0), at(1), at(2), at(3), at(4)}
+	values := []float64{10, 11, nan, nan, 14}
+	for _, tt := range []struct {
+		name string
+		t    float64
+		tol  time.Duration
+		want float64
+		ok   bool
+	}{
+		{"exact", 1, 0, 11, true},
+		{"nearer before", 1.2, time.Second, 11, true},
+		{"nearer after", 0.8, time.Second, 11, true},
+		{"tie goes earlier", 0.5, time.Second, 10, true},
+		{"outside tolerance", 0.5, 400 * time.Millisecond, 0, false},
+		{"skips NaN to the nearest finite one", 2.9, 2 * time.Second, 14, true},
+		{"NaN only within tolerance", 2.5, 400 * time.Millisecond, 0, false},
+		{"before the start", -0.2, 300 * time.Millisecond, 10, true},
+		{"before the start, too far", -0.5, 300 * time.Millisecond, 0, false},
+		{"after the end", 4.2, 300 * time.Millisecond, 14, true},
+		{"negative tolerance", 1, -1, 0, false},
+	} {
+		got, ok := ValueAt(times, values, at(tt.t), tt.tol)
+		if ok != tt.ok || got != tt.want {
+			t.Errorf("%s: ValueAt = %v, %v; want %v, %v", tt.name, got, ok, tt.want, tt.ok)
+		}
+	}
+	if _, ok := ValueAt(nil, nil, at(0), time.Hour); ok {
+		t.Error("empty series has a value")
 	}
 }

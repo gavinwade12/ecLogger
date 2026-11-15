@@ -97,24 +97,43 @@ func Downsample(times []time.Time, values []float64, from, to time.Time, n int) 
 	return d
 }
 
-func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
-
-// Range returns the smallest and largest finite values. ok is false if there
-// are none.
-func Range(values []float64) (min, max float64, ok bool) {
-	for _, v := range values {
-		if !finite(v) {
-			continue
-		}
-		if !ok {
-			min, max, ok = v, v, true
-			continue
-		}
-		min = math.Min(min, v)
-		max = math.Max(max, v)
+// ValueAt returns the finite value nearest to t among those within tol of it.
+// times must be sorted ascending, and should be the same length as values.
+// ok is false when there is none. The search is a binary search plus a walk
+// outward that stops once it is further than tol, so it costs O(log n + the
+// samples within tol), and ties go to the earlier sample.
+func ValueAt(times []time.Time, values []float64, t time.Time, tol time.Duration) (v float64, ok bool) {
+	if len(values) < len(times) {
+		times = times[:len(values)]
 	}
-	return min, max, ok
+	if tol < 0 {
+		return 0, false
+	}
+	hi := sort.Search(len(times), func(i int) bool { return !times[i].Before(t) })
+	lo := hi - 1
+	for lo >= 0 && t.Sub(times[lo]) <= tol && !finite(values[lo]) {
+		lo--
+	}
+	for hi < len(times) && times[hi].Sub(t) <= tol && !finite(values[hi]) {
+		hi++
+	}
+	before := lo >= 0 && t.Sub(times[lo]) <= tol
+	after := hi < len(times) && times[hi].Sub(t) <= tol
+	switch {
+	case before && after:
+		if times[hi].Sub(t) < t.Sub(times[lo]) {
+			return values[hi], true
+		}
+		return values[lo], true
+	case before:
+		return values[lo], true
+	case after:
+		return values[hi], true
+	}
+	return 0, false
 }
+
+func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 // NiceAxis widens [min, max] to round bounds on multiples of a round step
 // (1, 2 or 5 times a power of ten), such that there are at most maxTicks

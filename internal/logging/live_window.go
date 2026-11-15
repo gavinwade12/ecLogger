@@ -108,13 +108,12 @@ func (w *Window) Downsample(id string, from, to time.Time, n int) Downsampled {
 	return d
 }
 
-// Range returns the smallest and largest finite values held for id. ok is
-// false if there are none.
-func (w *Window) Range(id string) (min, max float64, ok bool) {
-	w.View(id, func(_ []time.Time, values []float64) {
-		min, max, ok = Range(values)
+// ValueAt returns id's finite value nearest to t within tol, as ValueAt does.
+func (w *Window) ValueAt(id string, t time.Time, tol time.Duration) (v float64, ok bool) {
+	w.View(id, func(times []time.Time, values []float64) {
+		v, ok = ValueAt(times, values, t, tol)
 	})
-	return min, max, ok
+	return v, ok
 }
 
 // Oldest returns the time of the oldest point held for any id. ok is false

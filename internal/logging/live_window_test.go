@@ -60,7 +60,7 @@ func TestWindowDropsOutOfOrder(t *testing.T) {
 	}
 }
 
-func TestWindowDownsampleAndRange(t *testing.T) {
+func TestWindowDownsample(t *testing.T) {
 	w := NewWindow()
 	w.AppendAll(at(0), map[string]float64{"a": 1, "b": 10})
 	w.AppendAll(at(1), map[string]float64{"a": 3, "b": math.NaN()})
@@ -73,12 +73,6 @@ func TestWindowDownsampleAndRange(t *testing.T) {
 	}
 	if d := w.Downsample("missing", at(0), at(2), 3); len(d.Buckets) != 3 || d.Buckets[0].N != 0 {
 		t.Errorf("unknown id = %+v", d)
-	}
-	if min, max, ok := w.Range("b"); !ok || min != 10 || max != 10 {
-		t.Errorf("Range(b) = %v, %v, %v", min, max, ok)
-	}
-	if _, _, ok := w.Range("missing"); ok {
-		t.Error("Range of unknown id is ok")
 	}
 }
 
@@ -133,7 +127,7 @@ func TestWindowConcurrent(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 500; i++ {
 			w.Downsample("a", at(0), at(60), 100)
-			w.Range("a")
+			w.View("a", func([]time.Time, []float64) {})
 			w.Len("a")
 			if i%100 == 0 {
 				w.SetWindow(time.Second)
@@ -141,6 +135,22 @@ func TestWindowConcurrent(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+}
+
+func TestWindowValueAt(t *testing.T) {
+	w := NewWindow()
+	for i := 0; i < 5; i++ {
+		appendOne(w, "a", at(float64(i)), float64(i*10))
+	}
+	if v, ok := w.ValueAt("a", at(2.1), 200*time.Millisecond); !ok || v != 20 {
+		t.Errorf("ValueAt = %v, %v; want 20", v, ok)
+	}
+	if _, ok := w.ValueAt("a", at(2.5), 200*time.Millisecond); ok {
+		t.Error("value found outside the tolerance")
+	}
+	if _, ok := w.ValueAt("nope", at(2), time.Hour); ok {
+		t.Error("value found for an unknown id")
+	}
 }
 
 func appendOne(w *Window, id string, t time.Time, v float64) {

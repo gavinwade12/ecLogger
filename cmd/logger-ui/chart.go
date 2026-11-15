@@ -27,9 +27,9 @@ type chartLane struct {
 	// Downsample reduces the lane's values in [from, to) to n buckets, as
 	// logging.Downsample does.
 	Downsample func(from, to time.Time, n int) logging.Downsampled
-	// Range returns the smallest and largest finite values, which set the
-	// lane's y-axis. ok is false if there are none.
-	Range func() (min, max float64, ok bool)
+	// ValueAt returns the finite value nearest to t within tol of it, for
+	// the cursor's readout. ok is false if there is none.
+	ValueAt func(t time.Time, tol time.Duration) (v float64, ok bool)
 }
 
 // paramTitle names a parameter with its unit, like "Engine Speed (rpm)", or
@@ -56,7 +56,9 @@ func lanesFromLog(l *logging.Log, columns []int) []chartLane {
 			Downsample: func(from, to time.Time, n int) logging.Downsampled {
 				return logging.Downsample(l.Times, c.Values, from, to, n)
 			},
-			Range: func() (float64, float64, bool) { return logging.Range(c.Values) },
+			ValueAt: func(t time.Time, tol time.Duration) (float64, bool) {
+				return logging.ValueAt(l.Times, c.Values, t, tol)
+			},
 		})
 	}
 	return lanes
@@ -160,6 +162,13 @@ type laneChart struct {
 	// kept so laying out again, which happens on every resize, doesn't walk
 	// every value.
 	ranges []laneRange
+
+	cursorState
+	chartNav
+	// plotLeft, plotRight and plotBottom are where the plot was laid out,
+	// for turning pointer positions into times
+	plotLeft, plotRight, plotBottom float32
+	rend                            *laneChartRenderer
 }
 
 type laneRange struct {
@@ -184,6 +193,7 @@ func (c *laneChart) SetLanes(lanes []chartLane) {
 // SetTimeRange sets the span of time shown across the chart's width.
 func (c *laneChart) SetTimeRange(from, to time.Time) {
 	c.from, c.to = from, to
+	c.readRanges()
 	c.Refresh()
 }
 
@@ -205,15 +215,64 @@ func (c *laneChart) SetView(from, to, origin time.Time, label timeLabeler) {
 	c.Refresh()
 }
 
+// Rescale reads each lane's value range again and redraws, for when the
+// lanes' values have changed under a view that hasn't.
+func (c *laneChart) Rescale() {
+	c.readRanges()
+	c.Refresh()
+}
+
+// readRanges sets each lane's value range to that of the values in the view,
+// so zooming in on part of a log scales the lanes to what's visible. It
+// reads one bucket spanning the view, which costs the visible samples and
+// no more.
 func (c *laneChart) readRanges() {
 	c.ranges = c.ranges[:0]
 	for _, l := range c.lanes {
 		var r laneRange
-		if l.Range != nil {
-			r.min, r.max, r.ok = l.Range()
+		if l.Downsample != nil && c.to.After(c.from) {
+			r = visibleRange(l.Downsample(c.from, c.to, 1))
 		}
 		c.ranges = append(c.ranges, r)
 	}
+}
+
+// visibleRange returns the range of the values in d, which is a single
+// bucket. A view with no samples in it takes the samples either side, which
+// are what the trace crossing it joins.
+func visibleRange(d logging.Downsampled) laneRange {
+	var r laneRange
+	add := func(lo, hi float64) {
+		if !r.ok {
+			r = laneRange{lo, hi, true}
+			return
+		}
+		r.min, r.max = math.Min(r.min, lo), math.Max(r.max, hi)
+	}
+	if len(d.Buckets) > 0 && d.Buckets[0].N > 0 {
+		add(d.Buckets[0].Min, d.Buckets[0].Max)
+		return r
+	}
+	if d.Before != nil {
+		add(d.Before.V, d.Before.V)
+	}
+	if d.After != nil {
+		add(d.After.V, d.After.V)
+	}
+	return r
+}
+
+// labeler returns how the time axis is labeled, and where its ticks count
+// from, with the defaults for a chart that hasn't been told.
+func (c *laneChart) labeler() (timeLabeler, time.Time) {
+	label, origin := c.label, c.origin
+	if label == nil {
+		label = elapsedLabels(c.from)
+	}
+	if origin.IsZero() {
+		origin = c.from
+	}
+	return label, origin
 }
 
 // chartMetrics are the sizes the chart is laid out with, in Fyne units.
@@ -254,9 +313,11 @@ func (c *laneChart) MinSize() fyne.Size {
 
 func (c *laneChart) CreateRenderer() fyne.WidgetRenderer {
 	r := &laneChartRenderer{chart: c, z: vector.NewRasterizer(0, 0)}
+	c.rend = r
 	r.raster = canvas.NewRaster(r.generate)
 	// Each raster pixel is a screen pixel, so don't blur it
 	r.raster.ScaleMode = canvas.ImageScalePixels
+	r.cursor = newCursorOverlay()
 	r.objects = []fyne.CanvasObject{r.raster}
 	return r
 }
@@ -291,6 +352,7 @@ func laneRows(height float32, n int, m chartMetrics) []laneRow {
 // A laneAxis is a lane's y-axis: lo to hi, labeled every step.
 type laneAxis struct {
 	ok          bool
+	decimals    int
 	lo, hi      float64
 	ticks       []float64
 	labels      []string
@@ -310,6 +372,7 @@ func yAxis(r laneRange, plotHeight float32, m chartMetrics) laneAxis {
 
 	// Enough decimals that neighbouring ticks read differently
 	decimals := max(0, -int(math.Floor(math.Log10(step)+1e-9)))
+	a.decimals = decimals
 	for _, t := range a.ticks {
 		if t == 0 {
 			t = 0 // not "-0"
@@ -343,7 +406,12 @@ type laneChartRenderer struct {
 	objects []fyne.CanvasObject
 	// texts are the labels, reused between layouts
 	texts []*canvas.Text
-	frame chartFrame
+	// axisTexts are the labels of the time axis's ticks, which the
+	// cursor's time takes the place of where they'd overlap
+	axisTexts []*canvas.Text
+	frame     chartFrame
+	// cursor is drawn over the raster, so moving it doesn't redraw that
+	cursor *cursorOverlay
 
 	img *image.RGBA
 	z   *vector.Rasterizer
@@ -369,6 +437,7 @@ func (r *laneChartRenderer) text(used *int, s string, size float32, c color.Colo
 	t := r.texts[*used]
 	*used++
 	t.Text, t.TextSize, t.Color = s, size, c
+	t.Show()
 	t.Move(fyne.NewPos(x, y))
 	t.Resize(t.MinSize())
 	return t
@@ -398,6 +467,10 @@ func (r *laneChartRenderer) Layout(size fyne.Size) {
 	if f.plotRight < f.plotLeft {
 		f.plotRight = f.plotLeft
 	}
+	c.plotLeft, c.plotRight, c.plotBottom = f.plotLeft, f.plotRight, 0
+	if len(f.rows) > 0 {
+		c.plotBottom = f.rows[len(f.rows)-1].bottom
+	}
 
 	used := 0
 	for i, l := range c.lanes {
@@ -420,15 +493,9 @@ func (r *laneChartRenderer) Layout(size fyne.Size) {
 
 	// Time axis
 	f.timeTicks, f.timeStep = nil, 0
+	r.axisTexts = r.axisTexts[:0]
 	if len(f.rows) > 0 && c.to.After(c.from) {
-		label := c.label
-		if label == nil {
-			label = elapsedLabels(c.from)
-		}
-		origin := c.origin
-		if origin.IsZero() {
-			origin = c.from
-		}
+		label, origin := c.labeler()
 		// Room for the widest label, which is about as wide as one with
 		// all zeros, plus a gap
 		widest := fyne.MeasureText("0:00:00.0", m.tickSize, fyne.TextStyle{}).Width
@@ -446,7 +513,7 @@ func (r *laneChartRenderer) Layout(size fyne.Size) {
 			if x < 0 || x+w > size.Width {
 				continue // would be cut off at the edge
 			}
-			r.text(&used, s, m.tickSize, muted, x, y)
+			r.axisTexts = append(r.axisTexts, r.text(&used, s, m.tickSize, muted, x, y))
 		}
 	}
 
@@ -454,6 +521,8 @@ func (r *laneChartRenderer) Layout(size fyne.Size) {
 	for _, t := range r.texts[:used] {
 		r.objects = append(r.objects, t)
 	}
+	r.objects = append(r.objects, r.cursor.objects(len(c.lanes))...)
+	r.layoutCursor(size)
 }
 
 // image returns a cleared w x h image, reusing the last frame's if the size
