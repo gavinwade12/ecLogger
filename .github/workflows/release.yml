@@ -1,0 +1,242 @@
+# Builds release archives for every platform when a v* tag is pushed, and
+# attaches them to a draft GitHub release. The draft is published by
+# scripts/sign-release.sh once checksums.txt has been checked and signed.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# The build jobs run third-party code (go install, tests), so only the
+# release job gets a token that can write.
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ github.ref_name }}
+  FYNE_VERSION: v1.7.4
+  # Stamps the tag into internal/buildinfo. Written as -X=name=value so it has
+  # no spaces and can also be passed through GOFLAGS, which is the only way
+  # fyne package takes extra linker flags.
+  VERSION_LDFLAG: -X=github.com/gavinwade12/ecLogger/internal/buildinfo.releaseVersion=${{ github.ref_name }}
+
+jobs:
+  darwin:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Install the Fyne CLI
+        run: go install fyne.io/tools/cmd/fyne@"$FYNE_VERSION"
+
+      # fyne package only builds for one architecture, so package each and
+      # merge the two binaries into the arm64 bundle with lipo. clang on the
+      # runner can target both, so this needs no cross toolchain.
+      - name: Package logger-ui
+        working-directory: cmd/logger-ui
+        run: |
+          # the bundle version must be plain x.y.z, without any -rc.1 suffix
+          app_version="${TAG#v}"
+          app_version="${app_version%%[-+]*}"
+          for arch in arm64 amd64; do
+            GOARCH="$arch" GOFLAGS="-ldflags=$VERSION_LDFLAG" \
+              fyne package --os darwin --release --app-version "$app_version"
+            mkdir -p "$RUNNER_TEMP/$arch"
+            mv Logger.app "$RUNNER_TEMP/$arch/"
+          done
+
+          app="$RUNNER_TEMP/arm64/Logger.app"
+          lipo -create -output "$RUNNER_TEMP/logger-ui" \
+            "$RUNNER_TEMP/arm64/Logger.app/Contents/MacOS/logger-ui" \
+            "$RUNNER_TEMP/amd64/Logger.app/Contents/MacOS/logger-ui"
+          mv "$RUNNER_TEMP/logger-ui" "$app/Contents/MacOS/logger-ui"
+          lipo -info "$app/Contents/MacOS/logger-ui"
+          # fail if the version didn't make it into the binary
+          grep -aqF -- "$TAG" "$app/Contents/MacOS/logger-ui"
+
+          # The bundle isn't signed with a Developer ID, but an ad-hoc
+          # signature over the whole bundle keeps macOS from calling it
+          # damaged once the quarantine flag is cleared.
+          codesign --force --sign - "$app"
+
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          ditto -c -k --keepParent "$app" \
+            "$GITHUB_WORKSPACE/dist/logger-ui_${TAG}_darwin_universal.zip"
+
+      # the serial port enumerator uses IOKit, so this needs cgo too
+      - name: Build ssm2-cli
+        run: |
+          for arch in arm64 amd64; do
+            CGO_ENABLED=1 GOARCH="$arch" go build -trimpath \
+              -ldflags "-s -w $VERSION_LDFLAG" \
+              -o "$RUNNER_TEMP/ssm2-cli-$arch" ./cmd/ssm2-cli
+          done
+          stage="$RUNNER_TEMP/ssm2-cli"
+          mkdir -p "$stage"
+          lipo -create -output "$stage/ssm2-cli" \
+            "$RUNNER_TEMP/ssm2-cli-arm64" "$RUNNER_TEMP/ssm2-cli-amd64"
+          cp LICENSE README.md "$stage/"
+          (cd "$stage" && zip "$GITHUB_WORKSPACE/dist/ssm2-cli_${TAG}_darwin_universal.zip" *)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-darwin
+          path: dist/
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Install the Fyne CLI
+        run: go install fyne.io/tools/cmd/fyne@"$FYNE_VERSION"
+
+      # On Windows, fyne package builds the exe a second time once it has
+      # generated the icon resource, but it clears GOFLAGS during the first
+      # build, so -ldflags from GOFLAGS never reach the exe it ships (fyne
+      # v1.7.4). Set the version from a generated init func instead, which
+      # runs after buildinfo's package vars are initialised. Excluding it in
+      # git keeps the build from being stamped as modified.
+      - name: Stamp the version for fyne package
+        run: |
+          f=internal/buildinfo/zz_release_version.go
+          printf 'package buildinfo\n\nfunc init() {\n\treleaseVersion = "%s"\n\tcurrent = read(releaseVersion, readBuildInfo())\n}\n' \
+            "$TAG" > "$f"
+          echo "$f" >> .git/info/exclude
+          cat "$f"
+
+      # Run from the package directory: on Windows, fyne package renames the
+      # built exe relative to the working directory. It embeds the icon and
+      # builds a GUI exe, so no console window opens with the app.
+      - name: Package logger-ui
+        working-directory: cmd/logger-ui
+        run: |
+          # the exe version resource must be plain x.y.z
+          app_version="${TAG#v}"
+          app_version="${app_version%%[-+]*}"
+          fyne package --os windows --release --app-version "$app_version"
+          rm "$GITHUB_WORKSPACE/internal/buildinfo/zz_release_version.go"
+          # fail if the version didn't make it into the exe
+          grep -aqF -- "$TAG" Logger.exe
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          7z a -tzip "$GITHUB_WORKSPACE/dist/logger-ui_${TAG}_windows_amd64.zip" Logger.exe
+
+      - name: Build ssm2-cli
+        run: |
+          stage="$RUNNER_TEMP/ssm2-cli"
+          mkdir -p "$stage"
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w $VERSION_LDFLAG" \
+            -o "$stage/ssm2-cli.exe" ./cmd/ssm2-cli
+          cp LICENSE README.md "$stage/"
+          (cd "$stage" && 7z a -tzip "$GITHUB_WORKSPACE/dist/ssm2-cli_${TAG}_windows_amd64.zip" *)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows
+          path: dist/
+          if-no-files-found: error
+
+  linux:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          # also the Raspberry Pi build, for 64-bit Raspberry Pi OS
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Fyne's build prerequisites; the UI tests need them to compile too
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+
+      - name: Test
+        run: go test ./...
+
+      - name: Install the Fyne CLI
+        run: go install fyne.io/tools/cmd/fyne@"$FYNE_VERSION"
+
+      # Makes Logger.tar.xz: a logger-ui directory holding the binary, icon
+      # and .desktop file under usr/local, and a Makefile to install them.
+      - name: Package logger-ui
+        working-directory: cmd/logger-ui
+        run: |
+          app_version="${TAG#v}"
+          app_version="${app_version%%[-+]*}"
+          GOFLAGS="-ldflags=$VERSION_LDFLAG" \
+            fyne package --os linux --release --app-version "$app_version"
+          # fail if the version didn't make it into the binary
+          tar -xJf Logger.tar.xz -C "$RUNNER_TEMP" logger-ui/usr/local/bin/logger-ui
+          grep -aqF -- "$TAG" "$RUNNER_TEMP/logger-ui/usr/local/bin/logger-ui"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          mv Logger.tar.xz "$GITHUB_WORKSPACE/dist/logger-ui_${TAG}_linux_${{ matrix.arch }}.tar.xz"
+
+      - name: Build ssm2-cli
+        run: |
+          stage="$RUNNER_TEMP/ssm2-cli"
+          mkdir -p "$stage"
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w $VERSION_LDFLAG" \
+            -o "$stage/ssm2-cli" ./cmd/ssm2-cli
+          cp LICENSE README.md "$stage/"
+          tar -czf "$GITHUB_WORKSPACE/dist/ssm2-cli_${TAG}_linux_${{ matrix.arch }}.tar.gz" \
+            -C "$stage" ssm2-cli LICENSE README.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    needs: [darwin, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: Checksum assets
+        working-directory: dist
+        run: |
+          sha256sum -- * > checksums.txt
+          cat checksums.txt
+
+      # A draft, so nothing is public until sign-release.sh has signed
+      # checksums.txt and published it. Tags with a hyphen, such as
+      # v0.2.0-rc.1, are marked as prereleases.
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: dist/*
+          fail_on_unmatched_files: true

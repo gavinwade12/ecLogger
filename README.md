@@ -31,13 +31,57 @@ Plug in a serial cable, pick the parameters you care about, and watch them live,
 
 - A Subaru with an SSM2-compatible ECU.
 - A cable that exposes the ECU's diagnostic line as a serial port on your computer.
-- [Go](https://go.dev/dl/) 1.25 or newer to build the app.
 
-There are no prebuilt binaries yet, so for now you build it from source.
+### Install
 
-### Build
+Download the latest build from [GitHub Releases](https://github.com/gavinwade12/ecLogger/releases). Pick the asset for your computer:
 
-ecLogger's UI uses [Fyne](https://fyne.io/), so first install its [prerequisites](https://developer.fyne.io/started/#prerequisites) for your OS (mostly a C compiler and some graphics headers). Then:
+| Computer | App | CLI |
+| --- | --- | --- |
+| Mac (Apple silicon or Intel) | `logger-ui_<version>_darwin_universal.zip` | `ssm2-cli_<version>_darwin_universal.zip` |
+| Windows | `logger-ui_<version>_windows_amd64.zip` | `ssm2-cli_<version>_windows_amd64.zip` |
+| Linux PC | `logger-ui_<version>_linux_amd64.tar.xz` | `ssm2-cli_<version>_linux_amd64.tar.gz` |
+| Raspberry Pi (64-bit Raspberry Pi OS) | `logger-ui_<version>_linux_arm64.tar.xz` | `ssm2-cli_<version>_linux_arm64.tar.gz` |
+
+The Raspberry Pi build needs the 64-bit Raspberry Pi OS; there's no 32-bit build.
+
+The builds aren't signed by Apple or Microsoft, so the first time you open the app your OS will push back:
+
+- **macOS** says it can't check the app for malicious software. Unzip it, move `Logger.app` to Applications and try to open it once, then go to *System Settings → Privacy & Security* and click *Open Anyway*. Or clear the quarantine flag before opening it:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/Logger.app
+  ```
+
+- **Windows** SmartScreen says it protected your PC. Click *More info*, then *Run anyway*.
+
+On **Linux and the Pi**, unpack the archive and install it for your user (or with `sudo make install` for everyone):
+
+```sh
+tar -xJf logger-ui_<version>_linux_arm64.tar.xz
+cd logger-ui && make user-install
+```
+
+Then give yourself access to serial ports by joining the `dialout` group, and log out and back in for it to take effect:
+
+```sh
+sudo usermod -aG dialout $USER
+```
+
+#### Verify a download
+
+Each release has a `checksums.txt` of every asset, signed with [minisign](https://jedisct1.github.io/minisign/). Download it and `checksums.txt.minisig` next to your assets, check the signature, then check the assets against it:
+
+```sh
+minisign -Vm checksums.txt -P RWS9Uq8XH1vJcNvTwOom+Y1lI6UJli9iEUp7HZ6DQu5dIkRQX6dmsAhE
+
+shasum -a 256 -c checksums.txt --ignore-missing     # macOS
+sha256sum -c checksums.txt --ignore-missing         # Linux
+```
+
+### Build from source
+
+You'll need [Go](https://go.dev/dl/) 1.25 or newer. ecLogger's UI uses [Fyne](https://fyne.io/), so first install its [prerequisites](https://developer.fyne.io/started/#prerequisites) for your OS (mostly a C compiler and some graphics headers). Then:
 
 ```sh
 git clone https://github.com/gavinwade12/ecLogger.git
@@ -49,7 +93,7 @@ go build -o cmd/ssm2-cli/ssm2-cli ./cmd/ssm2-cli
 
 ### Use it
 
-1. Run `cmd/logger-ui/logger-ui`.
+1. Open the app (or run `cmd/logger-ui/logger-ui` if you built it).
 2. On the **Connection** tab, pick your serial port and connect.
 3. On **Parameters**, tick *Live Log* for what you want to watch and *Log To File* for what you want to record.
 4. Open **Logging** for live tiles and to start and stop a log file, or **Graphing** to chart values as they arrive.
@@ -88,6 +132,16 @@ Run `ssm2-cli --help` for everything else.
 | `units` | Unit definitions and conversions |
 
 Tests run with `go test ./...`.
+
+## Releasing
+
+Pushing a `v*` tag (`v0.2.0-rc.1` makes a prerelease) runs the release workflow, which builds every archive and attaches them and `checksums.txt` to a draft release. Then:
+
+```sh
+scripts/sign-release.sh v0.1.0
+```
+
+It downloads the draft's assets, checks them against `checksums.txt`, signs it with minisign, uploads the signature and, once you confirm, publishes the release. It needs `gh` and `minisign` (`brew install gh minisign`), and uses the secret key at `~/.minisign/minisign.key` unless `MINISIGN_KEY` says otherwise.
 
 ## Safety
 
