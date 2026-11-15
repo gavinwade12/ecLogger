@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gavinwade12/ecLogger/internal/logging"
 )
@@ -17,6 +18,10 @@ const (
 
 	// DefaultLogFileNameFormat is the log file name format used when none is configured.
 	DefaultLogFileNameFormat = "ssm2_log_{{romId}}_{{timestamp}}.csv"
+
+	// DefaultLiveGraphMinutes is how much history the live graph shows
+	// unless one is configured.
+	DefaultLiveGraphMinutes = 5
 )
 
 // Config holds the logger UI's settings. It's stored as JSON.
@@ -28,6 +33,14 @@ type Config struct {
 	UseFakeConnection   bool
 	AutoConnect         bool
 	DefaultToLoggingTab bool
+	// LiveGraphMinutes is how much recent history the Graphing tab shows
+	// while connected.
+	LiveGraphMinutes int
+}
+
+// LiveGraphWindow returns how much history the live graph shows.
+func (c *Config) LiveGraphWindow() time.Duration {
+	return time.Duration(c.LiveGraphMinutes) * time.Minute
 }
 
 // DefaultPath returns the default config file path: ~/ssm2/.ssm2.
@@ -63,6 +76,9 @@ func Load(path string) (*Config, error) {
 	}
 	if config.LogFileNameFormat == "" {
 		config.LogFileNameFormat = DefaultLogFileNameFormat
+	}
+	if config.LiveGraphMinutes <= 0 {
+		config.LiveGraphMinutes = DefaultLiveGraphMinutes
 	}
 	return &config, nil
 }

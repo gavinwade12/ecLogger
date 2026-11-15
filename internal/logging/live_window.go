@@ -117,6 +117,22 @@ func (w *Window) Range(id string) (min, max float64, ok bool) {
 	return min, max, ok
 }
 
+// Oldest returns the time of the oldest point held for any id. ok is false
+// if the window is empty.
+func (w *Window) Oldest() (oldest time.Time, ok bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	for _, s := range w.series {
+		if s.start == len(s.times) {
+			continue
+		}
+		if t := s.times[s.start]; !ok || t.Before(oldest) {
+			oldest, ok = t, true
+		}
+	}
+	return oldest, ok
+}
+
 // Len returns the number of points held for id.
 func (w *Window) Len(id string) int {
 	w.mu.RLock()

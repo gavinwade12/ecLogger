@@ -7,6 +7,7 @@ package main_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -33,27 +34,57 @@ const waitTimeout = 3 * time.Second
 // test; mainThread instead runs them one at a time on a worker, and tests
 // touch widgets through run so they never overlap.
 type mainThread struct {
-	mu    sync.Mutex
-	queue chan func()
-	done  chan struct{}
+	mu sync.Mutex
+	// queue holds the calls waiting to run. Like Fyne's, it never fills
+	// up: while a test holds the main thread, say to stop a session whose
+	// goroutine is posting updates, those must not block.
+	queueMu sync.Mutex
+	queue   []func()
+	wake    chan struct{}
+	done    chan struct{}
 	// exited is closed when the worker is done
 	exited chan struct{}
 }
 
 func newMainThread() *mainThread {
-	m := &mainThread{queue: make(chan func(), 1024), done: make(chan struct{}), exited: make(chan struct{})}
+	m := &mainThread{wake: make(chan struct{}, 1), done: make(chan struct{}), exited: make(chan struct{})}
 	go func() {
 		defer close(m.exited)
 		for {
-			select {
-			case f := <-m.queue:
+			m.queueMu.Lock()
+			var f func()
+			if len(m.queue) > 0 {
+				f, m.queue = m.queue[0], m.queue[1:]
+			}
+			m.queueMu.Unlock()
+			if f != nil {
 				m.run(f)
+				continue
+			}
+			select {
+			case <-m.wake:
 			case <-m.done:
 				return
 			}
 		}
 	}()
 	return m
+}
+
+// post queues f to run on the main thread.
+func (m *mainThread) post(f func()) {
+	select {
+	case <-m.done:
+		return
+	default:
+	}
+	m.queueMu.Lock()
+	m.queue = append(m.queue, f)
+	m.queueMu.Unlock()
+	select {
+	case m.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (m *mainThread) run(f func()) {
@@ -76,18 +107,11 @@ type mainThreadDriver struct {
 
 func (d mainThreadDriver) DoFromGoroutine(f func(), wait bool) {
 	if !wait {
-		select {
-		case d.m.queue <- f:
-		case <-d.m.done:
-		}
+		d.m.post(f)
 		return
 	}
 	done := make(chan struct{})
-	select {
-	case d.m.queue <- func() { defer close(done); f() }:
-	case <-d.m.done:
-		return
-	}
+	d.m.post(func() { defer close(done); f() })
 	select {
 	case <-done:
 	case <-d.m.done:
@@ -141,7 +165,17 @@ func newTestApp(t *testing.T) *testApp {
 		ta.openMu.Unlock()
 		return f(port)
 	}
-	listPorts := func() ([]string, error) { return []string{"fake"}, nil }
+	// the Connection tab polls for ports every 30 seconds and never stops,
+	// and once this test is over its fyne.Do calls would land on another
+	// test's app, so stop giving it anything to show
+	var over atomic.Bool
+	t.Cleanup(func() { over.Store(true) })
+	listPorts := func() ([]string, error) {
+		if over.Load() {
+			return nil, errors.New("test is over")
+		}
+		return []string{"fake"}, nil
+	}
 	m.run(func() {
 		ta.App = ui.NewApp(fa, cfg, open, listPorts)
 		ta.window = test.NewWindow(ta.Content())

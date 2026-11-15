@@ -239,6 +239,8 @@ func formatLiveValue(v float32) string {
 }
 
 func (t *LoggingTab) updateLiveLogParameters() {
+	// the graph follows what the session reads, however it changed
+	defer t.app.GraphingTab.onLoggedParamsChanged()
 	t.container.RemoveAll()
 	t.DisableLogging()
 

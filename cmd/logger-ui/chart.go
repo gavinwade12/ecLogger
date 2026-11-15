@@ -63,7 +63,8 @@ func lanesFromLog(l *logging.Log, columns []int) []chartLane {
 }
 
 // A timeLabeler names a moment on the chart's time axis. step is the spacing
-// of the ticks being labeled, so a label can show just enough precision.
+// of the ticks being labeled, so a label can show just enough precision. An
+// empty name leaves the tick unlabeled.
 type timeLabeler func(t time.Time, step time.Duration) string
 
 // elapsedLabels labels times by how long after start they are, like 1:30 or
@@ -175,12 +176,8 @@ func newLaneChart() *laneChart {
 // SetLanes sets the parameters to draw, top lane first.
 func (c *laneChart) SetLanes(lanes []chartLane) {
 	c.lanes = append([]chartLane(nil), lanes...)
-	c.ranges = make([]laneRange, len(c.lanes))
-	for i, l := range c.lanes {
-		if l.Range != nil {
-			c.ranges[i].min, c.ranges[i].max, c.ranges[i].ok = l.Range()
-		}
-	}
+	c.ranges = nil
+	c.readRanges()
 	c.Refresh()
 }
 
@@ -196,6 +193,27 @@ func (c *laneChart) SetTimeRange(from, to time.Time) {
 func (c *laneChart) SetTimeAxis(origin time.Time, label timeLabeler) {
 	c.origin, c.label = origin, label
 	c.Refresh()
+}
+
+// SetView moves the chart on to [from, to] with a time axis anchored at
+// origin, and reads each lane's value range again, redrawing once. It's how a
+// live chart follows lanes whose values keep changing, without SetLanes's
+// rebuilding of the lanes.
+func (c *laneChart) SetView(from, to, origin time.Time, label timeLabeler) {
+	c.from, c.to, c.origin, c.label = from, to, origin, label
+	c.readRanges()
+	c.Refresh()
+}
+
+func (c *laneChart) readRanges() {
+	c.ranges = c.ranges[:0]
+	for _, l := range c.lanes {
+		var r laneRange
+		if l.Range != nil {
+			r.min, r.max, r.ok = l.Range()
+		}
+		c.ranges = append(c.ranges, r)
+	}
 }
 
 // chartMetrics are the sizes the chart is laid out with, in Fyne units.
@@ -420,6 +438,9 @@ func (r *laneChartRenderer) Layout(size fyne.Size) {
 		y := f.rows[len(f.rows)-1].bottom + m.pad
 		for _, t := range f.timeTicks {
 			s := label(t, f.timeStep)
+			if s == "" {
+				continue // the labeler leaves this tick unlabeled
+			}
 			w := fyne.MeasureText(s, m.tickSize, fyne.TextStyle{}).Width
 			x := f.plotLeft + float32(t.Sub(c.from))/span*(f.plotRight-f.plotLeft) - w/2
 			if x < 0 || x+w > size.Width {

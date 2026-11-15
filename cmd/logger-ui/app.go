@@ -81,6 +81,7 @@ func NewApp(fyneApp fyne.App, cfg *config.Config, open OpenFunc, listPorts func(
 		if item == app.tabItems.Items[TabLogFiles] {
 			app.LogFilesTab.refresh()
 		}
+		app.GraphingTab.setSelected(item == app.tabItems.Items[TabGraphing])
 	}
 	app.toggleConnectionRelatedTabs(false)
 	app.tabItems.SetTabLocation(container.TabLocationLeading)
@@ -93,6 +94,7 @@ func (a *App) OnNewConnection(conn ssm2.Connection, ecu *ssm2.ECU) {
 	a.ecu = ecu
 
 	a.ParametersTab.setAvailableParameters(ecu)
+	a.GraphingTab.onConnect()
 	a.LoggingTab.updateLiveLogParameters()
 	a.toggleConnectionRelatedTabs(true)
 }

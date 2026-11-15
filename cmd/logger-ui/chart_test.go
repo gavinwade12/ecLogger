@@ -371,3 +371,28 @@ type forcedVariant struct {
 func (f forcedVariant) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	return f.Theme.Color(name, f.variant)
 }
+
+func TestChartSetViewReadsRangesAgain(t *testing.T) {
+	start := time.Now()
+	hi := 1.0
+	lane := chartLane{
+		Name:       "live",
+		Downsample: func(from, to time.Time, n int) logging.Downsampled { return logging.Downsampled{} },
+		Range:      func() (float64, float64, bool) { return 0, hi, true },
+	}
+	c, r := newTestChart(t, 400, 300, []chartLane{lane}, start, start.Add(time.Second))
+	if got := r.frame.axes[0].hi; got != 1 {
+		t.Fatalf("axis top = %v, want 1", got)
+	}
+
+	// the lane's values grow, and the new view is laid out with them
+	hi = 100
+	end := start.Add(time.Minute)
+	c.SetView(start, end, end, func(time.Time, time.Duration) string { return "x" })
+	if got := r.frame.axes[0].hi; got < 100 {
+		t.Errorf("axis top = %v after SetView, want at least 100", got)
+	}
+	if !c.from.Equal(start) || !c.to.Equal(end) || !c.origin.Equal(end) || c.label == nil {
+		t.Errorf("view = %v to %v origin %v", c.from, c.to, c.origin)
+	}
+}

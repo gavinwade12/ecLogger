@@ -29,7 +29,10 @@ type GraphingTab struct {
 
 	openBtn   *widget.Button
 	paramsBtn *widget.Button
-	fileName  *widget.Label
+	// liveBtn closes the open file: back to the live graph when connected,
+	// or to nothing when not.
+	liveBtn  *widget.Button
+	fileName *widget.Label
 
 	// panel lists the log's columns to choose from, and is hidden until a
 	// log is open. It can also be hidden to give the chart the full width.
@@ -44,11 +47,20 @@ type GraphingTab struct {
 	chartView             fyne.CanvasObject
 	status                *hint
 	statusView            fyne.CanvasObject
+	chooseParamsBtn       *widget.Button
+	// charted is whether the chart is shown rather than the status, and
+	// needsParams whether the status offers to choose parameters
+	charted, needsParams bool
 
-	log *logging.Log
+	// fileMode is set from when a file is opened until it's closed, even
+	// if the file is still loading or couldn't be read.
+	fileMode bool
+	log      *logging.Log
 	// loads numbers the files being opened so a slow load that finishes
 	// after a newer one is dropped.
 	loads atomic.Uint64
+
+	live
 }
 
 func NewGraphingTab(app *App) *GraphingTab {
@@ -56,12 +68,14 @@ func NewGraphingTab(app *App) *GraphingTab {
 		app:       app,
 		openBtn:   widget.NewButtonWithIcon("Open…", theme.FolderOpenIcon(), nil),
 		paramsBtn: widget.NewButtonWithIcon("Parameters", theme.ListIcon(), nil),
+		liveBtn:   widget.NewButtonWithIcon("Live", theme.MediaPlayIcon(), nil),
 		fileName:  widget.NewLabel(""),
 		checkList: container.NewVBox(),
 		chart:     newLaneChart(),
 		status:    newHint(""),
 		panelOpen: true,
 	}
+	t.initLive()
 	t.fileName.Truncation = fyne.TextTruncateEllipsis
 	t.openBtn.OnTapped = t.showOpenDialog
 	t.paramsBtn.OnTapped = func() {
@@ -69,6 +83,10 @@ func NewGraphingTab(app *App) *GraphingTab {
 		t.updateView()
 	}
 	t.paramsBtn.Hide()
+	t.liveBtn.Hide()
+	t.liveBtn.OnTapped = t.closeFile
+	t.chooseParamsBtn = widget.NewButton("Choose Parameters", func() { app.SelectTab(TabParameters) })
+	t.chooseParamsBtn.Hide()
 	t.status.Wrapping = fyne.TextWrapWord
 
 	t.panel = container.New(fixedWidthLayout{graphingPanelWidth},
@@ -76,8 +94,10 @@ func NewGraphingTab(app *App) *GraphingTab {
 	t.panel.Hide()
 	t.chartView = container.NewVScroll(t.chart)
 	t.chartView.Hide()
-	t.statusView = container.NewCenter(container.NewGridWrap(fyne.NewSize(360, t.status.MinSize().Height*3), t.status))
-	t.setHint("Open a log file to graph it. Log files are written from the Logging tab.")
+	t.statusView = container.NewCenter(container.NewVBox(
+		container.NewGridWrap(fyne.NewSize(360, t.status.MinSize().Height*3), t.status),
+		container.NewCenter(t.chooseParamsBtn)))
+	t.setHint(disconnectedHint)
 	return t
 }
 
@@ -85,7 +105,7 @@ func (t *GraphingTab) Container() fyne.CanvasObject {
 	if t.view != nil {
 		return t.view
 	}
-	t.buttons = container.NewHBox(t.openBtn, t.paramsBtn)
+	t.buttons = container.NewHBox(t.openBtn, t.paramsBtn, t.liveBtn)
 	t.header = container.NewBorder(nil, nil, t.buttons, nil, t.fileName)
 	body := container.NewStack(t.chartView, t.statusView)
 	t.view = container.NewBorder(container.NewPadded(t.header), nil, t.panel, nil, body)
@@ -125,6 +145,8 @@ func (t *GraphingTab) showOpenDialog() {
 // file is read on another goroutine, so this returns right away.
 func (t *GraphingTab) OpenFile(path string) {
 	id := t.loads.Add(1)
+	t.fileMode = true
+	t.syncTicker()
 	t.fileName.SetText(filepath.Base(path))
 	t.setHint("Loading " + filepath.Base(path) + "…")
 	t.setLog(nil)
@@ -158,6 +180,7 @@ func readLogFile(path string) (*logging.Log, error) {
 func (t *GraphingTab) setLog(l *logging.Log) {
 	t.log = l
 	t.checks = nil
+	t.checkIDs = nil
 	t.checkList.Objects = nil
 	if l != nil {
 		for i, c := range l.Columns {
@@ -180,9 +203,42 @@ func (t *GraphingTab) setLog(l *logging.Log) {
 	t.updateChart()
 }
 
-// updateChart charts the checked columns, in column order.
+// closeFile closes the open file, to show the live graph when connected, or
+// the hint to open a file when not.
+func (t *GraphingTab) closeFile() {
+	t.loads.Add(1) // drop a file still loading
+	t.fileMode = false
+	t.log = nil
+	t.resetList()
+	t.showCurrent()
+}
+
+// resetList empties the parameter list.
+func (t *GraphingTab) resetList() {
+	t.checks = nil
+	t.checkIDs = nil
+	t.checkList.Objects = nil
+	t.checkList.Refresh()
+}
+
+// updateChart charts the checked parameters, whether from the open file or
+// live.
 func (t *GraphingTab) updateChart() {
+	switch {
+	case t.fileMode:
+		t.updateFileChart()
+	case t.liveMode():
+		t.updateLiveChart()
+	default:
+		t.updateView()
+	}
+}
+
+// updateFileChart charts the checked columns of the open file, in column
+// order.
+func (t *GraphingTab) updateFileChart() {
 	if t.log == nil {
+		t.charted = false
 		t.updateView()
 		return
 	}
@@ -194,6 +250,7 @@ func (t *GraphingTab) updateChart() {
 	}
 	t.chart.SetLanes(lanesFromLog(t.log, columns))
 
+	t.charted = false
 	switch {
 	case len(t.log.Times) == 0:
 		t.status.SetText("This log has no rows")
@@ -201,6 +258,7 @@ func (t *GraphingTab) updateChart() {
 		t.status.SetText("Choose parameters to graph")
 	default:
 		t.status.SetText("")
+		t.charted = true
 	}
 	t.updateView()
 }
@@ -208,12 +266,20 @@ func (t *GraphingTab) updateChart() {
 // updateView shows the chart, or the status that explains why there isn't
 // one, and the parameter list when there's a log to choose from.
 func (t *GraphingTab) updateView() {
-	hasLog := t.log != nil
-	charted := hasLog && len(t.log.Times) > 0 && t.status.Text() == ""
-	setShown(t.chartView, charted)
-	setShown(t.statusView, !charted)
-	setShown(t.paramsBtn, hasLog)
-	setShown(t.panel, hasLog && t.panelOpen)
+	hasList := (t.fileMode && t.log != nil) || (t.liveMode() && len(t.checks) > 0)
+	setShown(t.chartView, t.charted)
+	setShown(t.statusView, !t.charted)
+	setShown(t.chooseParamsBtn, !t.charted && t.needsParams)
+	setShown(t.paramsBtn, hasList)
+	setShown(t.panel, hasList && t.panelOpen)
+	setShown(t.liveBtn, t.fileMode)
+	if t.app.connection != nil {
+		t.liveBtn.SetText("Live")
+		t.liveBtn.SetIcon(theme.MediaPlayIcon())
+	} else {
+		t.liveBtn.SetText("Close")
+		t.liveBtn.SetIcon(theme.CancelIcon())
+	}
 	if t.view != nil {
 		t.buttons.Refresh()
 		t.header.Refresh()
@@ -230,11 +296,13 @@ func setShown(o fyne.CanvasObject, shown bool) {
 }
 
 func (t *GraphingTab) setHint(s string) {
+	t.charted, t.needsParams = false, false
 	t.status.SetText(s)
 	t.updateView()
 }
 
 func (t *GraphingTab) setError(s string) {
+	t.charted, t.needsParams = false, false
 	t.status.SetError(s)
 	t.updateView()
 }

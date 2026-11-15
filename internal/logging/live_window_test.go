@@ -82,6 +82,24 @@ func TestWindowDownsampleAndRange(t *testing.T) {
 	}
 }
 
+func TestWindowOldest(t *testing.T) {
+	w := NewWindow()
+	if _, ok := w.Oldest(); ok {
+		t.Error("an empty window has an oldest point")
+	}
+	w.SetWindow(10 * time.Second)
+	appendOne(w, "a", at(5), 1)
+	appendOne(w, "b", at(3), 1)
+	appendOne(w, "a", at(20), 1) // expires a's first point, not b's
+	if got, ok := w.Oldest(); !ok || !got.Equal(at(3)) {
+		t.Errorf("Oldest = %v, %v; want 3s", got, ok)
+	}
+	w.Drop("b")
+	if got, ok := w.Oldest(); !ok || !got.Equal(at(20)) {
+		t.Errorf("Oldest after Drop = %v, %v; want 20s", got, ok)
+	}
+}
+
 func TestWindowDropAndReset(t *testing.T) {
 	w := NewWindow()
 	appendOne(w, "a", at(0), 1)

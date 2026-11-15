@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/gavinwade12/ecLogger/internal/config"
 	"github.com/gavinwade12/ecLogger/internal/logging"
@@ -27,6 +28,25 @@ func TestLoadMissingFileReturnsDefaults(t *testing.T) {
 	if c.LoggedParams == nil {
 		t.Error("LoggedParams is nil")
 	}
+	if c.LiveGraphMinutes != 5 || c.LiveGraphWindow() != 5*time.Minute {
+		t.Errorf("LiveGraphMinutes = %d, want 5", c.LiveGraphMinutes)
+	}
+}
+
+func TestLoadFixesInvalidLiveGraphMinutes(t *testing.T) {
+	for _, minutes := range []string{"0", "-3"} {
+		path := filepath.Join(t.TempDir(), ".ssm2")
+		if err := os.WriteFile(path, []byte(`{"LiveGraphMinutes":`+minutes+`}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		c, err := config.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.LiveGraphMinutes != config.DefaultLiveGraphMinutes {
+			t.Errorf("LiveGraphMinutes %s loaded as %d, want the default", minutes, c.LiveGraphMinutes)
+		}
+	}
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {
@@ -39,7 +59,8 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 		LoggedParams: map[string]logging.LoggedParam{
 			"P9": {LiveLog: true, Unit: units.KMH},
 		},
-		AutoConnect: true,
+		AutoConnect:      true,
+		LiveGraphMinutes: 15,
 	}
 
 	if err := config.Save(path, want); err != nil {
@@ -69,6 +90,9 @@ func TestLoadIsCompatibleWithOldConfigs(t *testing.T) {
 	}
 	if c.SelectedPort != "COM3" || c.LogFileNameFormat != "x.csv" || !c.DefaultToLoggingTab {
 		t.Errorf("unexpected config: %+v", c)
+	}
+	if c.LiveGraphMinutes != config.DefaultLiveGraphMinutes {
+		t.Errorf("an old config's LiveGraphMinutes = %d, want the default", c.LiveGraphMinutes)
 	}
 	if c.LogDirectory == "" {
 		t.Error("a null LogDirectory should fall back to the default")

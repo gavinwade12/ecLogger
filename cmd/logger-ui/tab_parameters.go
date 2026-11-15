@@ -139,6 +139,8 @@ func (t *ParametersTab) setAvailableParameters(ecu *ssm2.ECU) {
 			// rebuild the live log so its min/max don't mix units
 			if lp, ok := t.app.loggedParams.Get(param.Id); ok && lp.LiveLog {
 				t.app.LoggingTab.updateLiveLogParameters()
+			} else {
+				t.app.GraphingTab.onLoggedParamsChanged()
 			}
 		})
 		lp, logged := loggedParams[param.Id]
