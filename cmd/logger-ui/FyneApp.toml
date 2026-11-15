@@ -1,6 +1,7 @@
 [Details]
 ID = "io.github.gavinwade12.eclogger"
 Name = "Logger"
+Icon = "Icon.png"
 
 [Migrations]
 fyneDo = true
