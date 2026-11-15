@@ -25,8 +25,8 @@ jobs:
   darwin:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -85,7 +85,7 @@ jobs:
           cp LICENSE README.md "$stage/"
           (cd "$stage" && zip "$GITHUB_WORKSPACE/dist/ssm2-cli_${TAG}_darwin_universal.zip" *)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-darwin
           path: dist/
@@ -97,8 +97,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -147,7 +147,7 @@ jobs:
           cp LICENSE README.md "$stage/"
           (cd "$stage" && 7z a -tzip "$GITHUB_WORKSPACE/dist/ssm2-cli_${TAG}_windows_amd64.zip" *)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-windows
           path: dist/
@@ -164,8 +164,8 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -210,7 +210,7 @@ jobs:
           tar -czf "$GITHUB_WORKSPACE/dist/ssm2-cli_${TAG}_linux_${{ matrix.arch }}.tar.gz" \
             -C "$stage" ssm2-cli LICENSE README.md
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-linux-${{ matrix.arch }}
           path: dist/
@@ -222,7 +222,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           merge-multiple: true
@@ -237,7 +237,7 @@ jobs:
       # A draft, so nothing is public until sign-release.sh has signed
       # checksums.txt and published it. Tags with a hyphen, such as
       # v0.2.0-rc.1, are marked as prereleases.
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           draft: true
           generate_release_notes: true
