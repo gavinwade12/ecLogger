@@ -1,4 +1,5 @@
 [Details]
+ID = "io.github.gavinwade12.eclogger"
 Name = "Logger"
 
 [Migrations]

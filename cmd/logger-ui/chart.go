@@ -32,6 +32,15 @@ type chartLane struct {
 	Range func() (min, max float64, ok bool)
 }
 
+// paramTitle names a parameter with its unit, like "Engine Speed (rpm)", or
+// just its name when it has no unit.
+func paramTitle(name string, unit units.Unit) string {
+	if unit == "" {
+		return name
+	}
+	return fmt.Sprintf("%s (%s)", name, unit)
+}
+
 // lanesFromLog returns a lane for each of l's columns listed in columns, in
 // that order. Indexes out of range are skipped.
 func lanesFromLog(l *logging.Log, columns []int) []chartLane {
@@ -375,11 +384,7 @@ func (r *laneChartRenderer) Layout(size fyne.Size) {
 	used := 0
 	for i, l := range c.lanes {
 		row, a := f.rows[i], f.axes[i]
-		title := l.Name
-		if l.Unit != "" {
-			title = fmt.Sprintf("%s (%s)", l.Name, l.Unit)
-		}
-		r.text(&used, title, m.titleSize, fg, f.plotLeft, row.top+m.pad/2)
+		r.text(&used, paramTitle(l.Name, l.Unit), m.titleSize, fg, f.plotLeft, row.top+m.pad/2)
 		if !a.ok {
 			t := r.text(&used, "No data", m.titleSize, muted, 0, 0)
 			ts := t.MinSize()

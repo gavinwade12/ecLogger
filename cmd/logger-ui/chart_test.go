@@ -38,6 +38,15 @@ func TestFormatElapsed(t *testing.T) {
 	}
 }
 
+func TestParamTitle(t *testing.T) {
+	if got := paramTitle("Engine Speed", "rpm"); got != "Engine Speed (rpm)" {
+		t.Errorf("with unit = %q", got)
+	}
+	if got := paramTitle("Throttle", ""); got != "Throttle" {
+		t.Errorf("without unit = %q, want no brackets", got)
+	}
+}
+
 func TestTimeTicks(t *testing.T) {
 	origin := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	ticks, step := timeTicks(origin, origin, origin.Add(2*time.Minute), 6)

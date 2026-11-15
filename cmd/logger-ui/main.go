@@ -23,8 +23,11 @@ func main() {
 	}
 
 	// every widget update from a goroutine goes through fyne.Do, so Fyne
-	// doesn't need to check which goroutine calls it
+	// doesn't need to check which goroutine calls it. The ID is needed by
+	// Fyne's preferences, which the file dialog uses to remember the last
+	// folder; keep it in step with FyneApp.toml.
 	fyneApp.SetMetadata(fyne.AppMetadata{
+		ID:         "io.github.gavinwade12.eclogger",
 		Name:       "Logger",
 		Migrations: map[string]bool{"fyneDo": true},
 	})
@@ -33,6 +36,7 @@ func main() {
 	window := app.fyneApp.NewWindow("Logger")
 	window.Resize(fyne.NewSize(800, 400))
 	window.SetContent(app.Content())
+	app.SetWindow(window)
 
 	if app.config.AutoConnect {
 		app.fyneApp.Lifecycle().SetOnStarted(app.ConnectionTab.OnConnectTapped)

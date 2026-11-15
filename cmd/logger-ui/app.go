@@ -14,8 +14,9 @@ const (
 	TabConnection TabType = 0
 	TabParameters TabType = 1
 	TabLogging    TabType = 2
-	TabDTCs       TabType = 3
-	TabSettings   TabType = 4
+	TabGraphing   TabType = 3
+	TabDTCs       TabType = 4
+	TabSettings   TabType = 5
 )
 
 type App struct {
@@ -23,11 +24,14 @@ type App struct {
 	loggedParams *logging.Params
 
 	fyneApp fyne.App
+	// win is the window showing the app, for dialogs
+	win fyne.Window
 
 	tabItems      *container.AppTabs
 	ConnectionTab *ConnectionTab
 	ParametersTab *ParametersTab
 	LoggingTab    *LoggingTab
+	GraphingTab   *GraphingTab
 	DTCsTab       *DTCsTab
 	SettingsTab   *SettingsTab
 
@@ -58,12 +62,14 @@ func NewApp(fyneApp fyne.App, cfg *config.Config, open OpenFunc, listPorts func(
 	app.ConnectionTab = NewConnectionTab(app)
 	app.ParametersTab = NewParametersTab(app)
 	app.LoggingTab = NewLoggingTab(app)
+	app.GraphingTab = NewGraphingTab(app)
 	app.DTCsTab = NewDTCsTab(app)
 	app.SettingsTab = NewSettingsTab(app)
 	app.tabItems = container.NewAppTabs(
 		container.NewTabItem("Connection", app.ConnectionTab.Container()),
 		container.NewTabItem("Parameters", app.ParametersTab.Container()),
 		container.NewTabItem("Logging", app.LoggingTab.Container()),
+		container.NewTabItem("Graphing", app.GraphingTab.Container()),
 		container.NewTabItem("DTCs", app.DTCsTab.Container()),
 		container.NewTabItem("Settings", app.SettingsTab.Container()),
 	)
@@ -97,6 +103,10 @@ func (a *App) OnDisconnect() {
 	a.ParametersTab.setAvailableParameters(nil)
 	a.LoggingTab.updateLiveLogParameters()
 }
+
+// SetWindow sets the window that shows the app's content, which dialogs
+// are shown over.
+func (a *App) SetWindow(w fyne.Window) { a.win = w }
 
 // Content returns the app's UI, to be shown in a window.
 func (a *App) Content() fyne.CanvasObject {

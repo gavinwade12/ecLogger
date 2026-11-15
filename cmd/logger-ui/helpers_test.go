@@ -212,6 +212,12 @@ func (ta *testApp) texts(tab ui.TabType) (s []string) {
 	return s
 }
 
+// hasTextWithPrefix returns whether a tab shows text starting with prefix.
+func (ta *testApp) hasTextWithPrefix(tab ui.TabType, prefix string) (has bool) {
+	ta.do(func() { has = hasTextWithPrefix(ta.content(tab), prefix) })
+	return has
+}
+
 func (ta *testApp) tabEnabled(tab ui.TabType) (enabled bool) {
 	ta.do(func() { enabled = !ta.tabs().Items[tab].Disabled() })
 	return enabled
@@ -254,7 +260,7 @@ func (ta *testApp) waitForStatus(state string) {
 }
 
 func tabName(tab ui.TabType) string {
-	return [...]string{"Connection", "Parameters", "Logging", "DTCs", "Settings"}[tab]
+	return [...]string{"Connection", "Parameters", "Logging", "Graphing", "DTCs", "Settings"}[tab]
 }
 
 // connect taps Connect and waits for the connection to be initialized.
