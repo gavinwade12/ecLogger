@@ -35,7 +35,12 @@ if [[ ! -f $key ]]; then
 	exit 1
 fi
 
-is_draft=$(gh release view "$tag" --json isDraft --jq .isDraft)
+# gh infers the repo from the git checkout it's run in, and the downloads
+# below run in a temp dir outside it, so resolve the repo once from the
+# script's own checkout and name it in every gh call.
+repo=$(cd "$(dirname "$0")/.." && gh repo view --json nameWithOwner --jq .nameWithOwner)
+
+is_draft=$(gh release view "$tag" -R "$repo" --json isDraft --jq .isDraft)
 if [[ $is_draft != true ]]; then
 	echo "release $tag isn't a draft; refusing to re-sign a published release" >&2
 	exit 1
@@ -46,8 +51,8 @@ trap 'rm -rf "$tmp"' EXIT
 cd "$tmp"
 
 echo "Downloading the assets of $tag..."
-gh release download "$tag" --pattern checksums.txt
-gh release download "$tag" --skip-existing
+gh release download "$tag" -R "$repo" --pattern checksums.txt
+gh release download "$tag" -R "$repo" --skip-existing
 
 # every asset must be listed, not just those that are listed must match
 for f in *; do
@@ -66,13 +71,13 @@ shasum -a 256 -c checksums.txt
 echo "Signing checksums.txt..."
 minisign -S -s "$key" -m checksums.txt -t "ecLogger $tag checksums.txt"
 
-gh release upload "$tag" checksums.txt.minisig --clobber
+gh release upload "$tag" -R "$repo" checksums.txt.minisig --clobber
 echo "Uploaded checksums.txt.minisig to $tag."
 
 read -r -p "Publish release $tag? [y/N] " answer
 if [[ $answer =~ ^[Yy]$ ]]; then
-	gh release edit "$tag" --draft=false
+	gh release edit "$tag" -R "$repo" --draft=false
 	echo "Published $tag."
 else
-	echo "Left $tag as a draft. Publish it with: gh release edit $tag --draft=false"
+	echo "Left $tag as a draft. Publish it with: gh release edit $tag -R $repo --draft=false"
 fi
