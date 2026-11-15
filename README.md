@@ -81,7 +81,7 @@ sha256sum -c checksums.txt --ignore-missing         # Linux
 
 ### Build from source
 
-You'll need [Go](https://go.dev/dl/) 1.25 or newer. ecLogger's UI uses [Fyne](https://fyne.io/), so first install its [prerequisites](https://developer.fyne.io/started/#prerequisites) for your OS (mostly a C compiler and some graphics headers). Then:
+You'll need [Go](https://go.dev/dl/) 1.25 or newer. ecLogger's UI uses [Fyne](https://fyne.io/), so first install its [prerequisites](https://developer.fyne.io/started/#prerequisites) for your OS (mostly a C compiler and some graphics headers). On Debian, Ubuntu and Raspberry Pi OS, also install `libwayland-dev`, which the windowing library needs to build, even if you only use X11. Then:
 
 ```sh
 git clone https://github.com/gavinwade12/ecLogger.git

@@ -169,11 +169,15 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Fyne's build prerequisites; the UI tests need them to compile too
+      # Fyne's build prerequisites; the UI tests need them to compile too.
+      # go-gl/glfw v3.4 builds X11 and Wayland support together, so it needs
+      # the Wayland client headers and libraries (libwayland-dev) as well as
+      # libxkbcommon. Its Wayland protocol headers come pre-generated, so
+      # wayland-scanner and wayland-protocols aren't needed.
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev libwayland-dev
 
       - name: Test
         run: go test ./...
