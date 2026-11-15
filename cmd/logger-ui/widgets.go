@@ -19,6 +19,11 @@ func newHint(text string) *hint {
 		ColorName: colorNameSecondaryText,
 	}}}
 	h.RichText = widget.NewRichText(h.segment)
+	// Without this, Fyne keeps one renderer for the hint, which the canvas
+	// draws, and another for the RichText inside it, which RichText.Refresh
+	// rebuilds. The one drawn would never get rows added when new text
+	// wraps over more of them.
+	h.ExtendBaseWidget(h)
 	h.SetText(text)
 	return h
 }
